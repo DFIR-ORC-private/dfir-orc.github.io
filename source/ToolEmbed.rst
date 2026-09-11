@@ -11,10 +11,25 @@ In daily life, when using a repository as `DFIR ORC configuration GitHub <https:
 
 ToolEmbed is also able to extract all the resources from a configured binary, thanks to the ``/dump`` option. This can be useful to quickly edit a configuration and obtain a new configured binary.The :doc:`tutorial<tuto>` illustrates this scenario.
 
+.. important::
+    ToolEmbed configures a **capsule**, and only a capsule. The base image it adds resources to is named by the ``/capsule`` option, not by the ``input`` element any more:
+
+    .. code:: shell
+
+        DFIR-Orc_x64.exe ToolEmbed /capsule=.\tools\OrcCapsule.exe /config=.\embed.xml
+
+    Run without ``/capsule``, the command refuses to do anything:
+
+    .. code:: text
+
+        [DEPRECATED] DFIR-ORC does not use Mothership anymore, call ToolEmbed from Capsule wrapper
+
+    The capsule also invokes ToolEmbed itself, in which case it passes its own image rather than a path. An ``input`` element left in a configuration file is ignored, with a warning.
+
 The layout of the XML configuration file is as follows:
 
 | <`toolembed <#toolembed-toolembed-element>`_ attributes="..." >
-|    <`input <#toolembed-input-element>`_ > *value* </input>
+|    <`input <#toolembed-input-element>`_ > *value* </input> *(ignored, see* `/capsule <#capsule-option>`_ *)*
 |    <`output <#toolembed-output-element>`_ > *value* </output>
 |    <`run <#toolembed-run-element>`_ attributes="..."></run>
 |    <`run32 <#toolembed-run32-element>`_ attributes="..."></run32>
@@ -32,7 +47,6 @@ Here is a typical ToolEmbed configuration file.
 .. code:: xml
 
     <toolembed>
-        <input>.\tools\DFIR-Orc_x86.exe</input>
         <output>.\output\DFIR-Orc.exe</output>
 
         <run32 args="WolfLauncher">self:#</run32>
@@ -65,25 +79,38 @@ Usage
 
 There are two  most classical ways to use ToolEmbed:
 
-*  The following command allows to obtain a configured binary, using an XML configuration file specifying all necessary elements.
+*  The following command allows to obtain a configured binary, using an XML configuration file specifying all necessary elements. ``/capsule`` names the capsule to configure.
 
 .. code:: bat
 
-    DFIR-Orc.exe ToolEmbed /config=DFIR-Orc_embed.xml
+    DFIR-Orc.exe ToolEmbed /capsule=tools\OrcCapsule.exe /config=DFIR-Orc_embed.xml
 
 Alternatively, the ``/embed`` option can be used as a more flexible replacement:
 
 .. code:: bat
 
-    DFIR-Orc.exe ToolEmbed /embed=c:\path\to\your\config\DFIR-Orc_embed.xml /out=DFIR-Orc.exe
+    DFIR-Orc.exe ToolEmbed /capsule=tools\OrcCapsule.exe /embed=c:\path\to\your\config\DFIR-Orc_embed.xml /out=DFIR-Orc.exe
     ; Or
-    DFIR-Orc.exe ToolEmbed /embed=c:\path\to\your\config\ /out=DFIR-Orc.exe
+    DFIR-Orc.exe ToolEmbed /capsule=tools\OrcCapsule.exe /embed=c:\path\to\your\config\ /out=DFIR-Orc.exe
 
 * The line below allows to extract resources from a configured binary in a directory of choice.
 
 .. code:: bat
 
     DFIR-Orc.exe ToolEmbed /dump=Configured-binary.exe /out=dump-dir\
+
+.. _toolembed-upload-gate:
+
+Refused configurations
+----------------------
+
+Embedding is the last moment at which a whole configuration is in front of an operator, so a WolfLauncher configuration carrying an ``upload`` section is checked before it is written into the binary. ToolEmbed **refuses to produce the binary** when:
+
+* the configuration designated as the WolfLauncher configuration cannot be parsed against its schema, whether it is named through ``<file name="WOLFLAUNCHER_CONFIG" .../>`` or through the ``<pair name="WOLFLAUNCHER_CONFIG" value="res:#..."/>`` indirection, and whatever the file is called on disk;
+* its ``upload`` section cannot be configured, for instance because ``uri`` is combined with ``server``;
+* the upload would send collected data in clear text - plain HTTP without ``insecure="true"``, a certificate pin on a plain-HTTP server, proxy credentials without a proxy, or an authenticating proxy with no scheme named.
+
+Each refusal is reported with the configuration it came from and what to change. The other embedded files are not affected: only the WolfLauncher configuration is held to this.
 
 .. _toolembed-toolembed-element:
 
@@ -102,24 +129,37 @@ Root element.
 ===========================================
 
 .. deprecated:: 10.3
-    The ``input`` element (and its ``/input`` command-line equivalent) is deprecated for use with DFIR-ORC binaries. Use the new ``/embed`` option instead, which provides a more flexible interface.
+    The ``input`` element (and its ``/input`` command-line equivalent) named the binary ToolEmbed used as a **Mothership**. DFIR ORC does not use a Mothership any more: the base image is the capsule, named by `/capsule <#capsule-option>`_.
 
-*optional=no except with /dump option, default=N/A*
+    An ``input`` element left in a configuration file is **ignored**, and reported as such. A run that names no capsule at all does nothing but print:
 
-This element contains the path to the binary which ToolEmbed uses as a **Mothership** (see :ref:`here<architecture-config-process>`).
-This base is augmented with new resources to create the output of ToolEmbed.
-This input file remains unmodified by ToolEmbed.
-Environment variables will be substituted.
+    .. code:: text
 
-The element is compulsory in an XML configuration file, and during a configuration operation. On the contrary, when dumping resources from a configured binary, it is irrelevant.
+        [DEPRECATED] DFIR-ORC does not use Mothership anymore, call ToolEmbed from Capsule wrapper
+
+*optional=yes (ignored), default=N/A*
+
+The element is kept only so that configuration files written for earlier versions still parse. It has no effect: the resources are added to the capsule, which remains unmodified on disk since the result is written to `output <#toolembed-output-element>`_.
+
+`Back to Root <#anchor-root-toolembed>`_
+
+.. _capsule-option:
+
+``/capsule=<Path>`` Option
+==========================
+
+*optional=no (for a configuration operation), default=N/A*
+
+Names the capsule binary - ``OrcCapsule.exe``, or an already configured ``DFIR-ORC.exe`` - that the resources are added to. It replaces the ``input`` element, and without it ToolEmbed refuses to run.
+
+The option has no XML equivalent: what a configuration file describes is the resources to embed, while the image they are embedded into is chosen by the command that runs. When the capsule invokes ToolEmbed itself, it passes its own running image instead of a path, and the option is then set for you.
 
 Example
 -------
 
-.. code:: xml
+.. code:: bat
 
-    <input>.\tools\DFIR-Orc_x86.exe</input>
-
+    DFIR-Orc_x64.exe ToolEmbed /capsule=.\tools\OrcCapsule.exe /config=.\embed.xml
 
 `Back to Root <#anchor-root-toolembed>`_
 
