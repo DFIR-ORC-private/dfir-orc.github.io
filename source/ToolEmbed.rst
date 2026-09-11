@@ -11,10 +11,19 @@ In daily life, when using a repository as `DFIR ORC configuration GitHub <https:
 
 ToolEmbed is also able to extract all the resources from a configured binary, thanks to the ``/dump`` option. This can be useful to quickly edit a configuration and obtain a new configured binary.The :doc:`tutorial<tuto>` illustrates this scenario.
 
+.. important::
+    ToolEmbed is run from the packaged ``DFIR-Orc.exe``, built with ``OrcCapsule.exe capsule add``: it configures a copy of the binary it runs from. The ``input`` element is no longer used, and is ignored with a warning.
+
+    Run from a binary that is not packaged, such as ``DFIR-Orc_x64.exe``, ToolEmbed does nothing but print:
+
+    .. code:: text
+
+        [DEPRECATED] DFIR-ORC does not use Mothership anymore, call ToolEmbed from Capsule wrapper
+
 The layout of the XML configuration file is as follows:
 
 | <`toolembed <#toolembed-toolembed-element>`_ attributes="..." >
-|    <`input <#toolembed-input-element>`_ > *value* </input>
+|    <`input <#toolembed-input-element>`_ > *value* </input> *(ignored)*
 |    <`output <#toolembed-output-element>`_ > *value* </output>
 |    <`run <#toolembed-run-element>`_ attributes="..."></run>
 |    <`run32 <#toolembed-run32-element>`_ attributes="..."></run32>
@@ -32,7 +41,6 @@ Here is a typical ToolEmbed configuration file.
 .. code:: xml
 
     <toolembed>
-        <input>.\tools\DFIR-Orc_x86.exe</input>
         <output>.\output\DFIR-Orc.exe</output>
 
         <run32 args="WolfLauncher">self:#</run32>
@@ -85,6 +93,18 @@ Alternatively, the ``/embed`` option can be used as a more flexible replacement:
 
     DFIR-Orc.exe ToolEmbed /dump=Configured-binary.exe /out=dump-dir\
 
+.. _toolembed-advisory-warnings:
+
+Warnings
+--------
+
+ToolEmbed tries to detect a risky configuration and warns about it, but still builds the binary: the decision is the user's, so an insecure configuration remains possible.
+
+It warns when:
+
+* collected data is uploaded unencrypted: an ``archive`` no `recipient <wolf_config.html#recipient-element>`_ covers, or a ``log``, ``console``, ``outline`` or ``outcome`` without encryption (see :ref:`Encrypted output files <wolf_config-encrypted-output-files>`);
+* the `upload <orc_local_config.html#upload-element>`_ entries do not have the same ``include``/``exclude``.
+
 .. _toolembed-toolembed-element:
 
 ``toolembed`` Element
@@ -102,24 +122,13 @@ Root element.
 ===========================================
 
 .. deprecated:: 10.3
-    The ``input`` element (and its ``/input`` command-line equivalent) is deprecated for use with DFIR-ORC binaries. Use the new ``/embed`` option instead, which provides a more flexible interface.
+    The ``input`` element (and its ``/input`` command-line equivalent) named the binary ToolEmbed used as a **Mothership**. DFIR ORC does not use a Mothership any more: ToolEmbed configures the packaged binary it runs from.
 
-*optional=no except with /dump option, default=N/A*
+    An ``input`` element left in a configuration file is **ignored**, and reported as such.
 
-This element contains the path to the binary which ToolEmbed uses as a **Mothership** (see :ref:`here<architecture-config-process>`).
-This base is augmented with new resources to create the output of ToolEmbed.
-This input file remains unmodified by ToolEmbed.
-Environment variables will be substituted.
+*optional=yes (ignored), default=N/A*
 
-The element is compulsory in an XML configuration file, and during a configuration operation. On the contrary, when dumping resources from a configured binary, it is irrelevant.
-
-Example
--------
-
-.. code:: xml
-
-    <input>.\tools\DFIR-Orc_x86.exe</input>
-
+The element is kept only so that configuration files written for earlier versions still parse. It has no effect: the resources are added to a copy of the running binary, written to `output <#toolembed-output-element>`_.
 
 `Back to Root <#anchor-root-toolembed>`_
 
@@ -159,18 +168,17 @@ This element can be overridden by ``run32`` or ``run64`` elements (or options).
 Attributes
 ----------
 * **args** *(optional=yes, default=N/A)*
-    The optional ``args`` attribute allows the addition of arguments. This yields a command line starting with the specified binary, followed by the optional args, then potentially followed by arguments passed on by Mothership.
+    The optional ``args`` attribute allows the addition of arguments. This yields a command line starting with the specified binary, followed by the optional args, then potentially followed by arguments passed on by the capsule.
 
 Example
 -------
 
 .. code:: xml
 
-    <input>.\tools\DFIR-Orc_x86.exe</input>
     ...
     <run args="WolfLauncher">self:#</run>
 
-This example results in the Mothership binary relaunching itself with the added argument "WolfLauncher" (which results in the execution of the code of WolfLauncher, the scheduler for DFIR ORC).
+This example results in the capsule relaunching itself with the added argument "WolfLauncher" (which results in the execution of the code of WolfLauncher, the scheduler for DFIR ORC).
 Notation ``self:#`` and resources are documented in :doc:`resources`.
 
 `Back to Root <#anchor-root-toolembed>`_
@@ -191,18 +199,17 @@ When specified this element overrides a ``run`` element (or option).
 Attributes
 ----------
 * **args** *(optional=yes, default=N/A)*
-    The optional ``args`` attribute allows the addition of arguments. This yields a command line starting with the specified binary, followed by the optional args, then potentially followed by arguments passed on by Mothership.
+    The optional ``args`` attribute allows the addition of arguments. This yields a command line starting with the specified binary, followed by the optional args, then potentially followed by arguments passed on by the capsule.
 
 Example
 -------
 
 .. code:: xml
 
-    <input>.\tools\DFIR-Orc_x86.exe</input>
     ...
     <run32 args="WolfLauncher">self:#</run32>
 
-This example results in the Mothership binary relaunching itself with the added argument "WolfLauncher" (the scheduler for DFIR ORC).
+This example results in the capsule relaunching itself with the added argument "WolfLauncher" (the scheduler for DFIR ORC).
 Notation ``self:#`` and resources are documented in :doc:`resources`.
 
 `Back to Root <#anchor-root-toolembed>`_
