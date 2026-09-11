@@ -21,7 +21,13 @@ Its point is to be exhaustive from the point of view of existing usable elements
 | <`dfir-orc <#dfir-orc-element>`_ *attributes="..."*>
 |      <`temporary <#temporary-element>`_> *value* <`/temporary <#temporary-element>`_>
 |      <`output <#output-element>`_> *value* <`/output <#output-element>`_>
-|      <`upload <#upload-element>`_ *attributes="..."* />
+|      <`upload <#upload-element>`_ *attributes="..."*>
+|          <`header <#headers-sent-with-every-request>`__> *value* </header>
+|          <`rest <#rest-element>`_ *attributes="..."*>
+|              <`header <#header-child-element>`__> *value* </header>
+|              <`response <#response-child-element>`_ *attributes="..."* />
+|          </`rest <#rest-element>`_>
+|      <`/upload <#upload-element>`_>
 |      <`recipient <#recipient-element>`_ *attributes="..."*> *value* <`/recipient <#recipient-element>`_>
 |      <`key <#key-element>`_> *value*  <`/key <#key-element>`_>
 |      <`enable_key <#enable-key-and-disable-key-elements>`_> *value* <`/enable_key <#enable-key-and-disable-key-elements>`_>
@@ -119,11 +125,15 @@ Attributes
 * **job** *(optional=yes, default=none)*
         Describes the upload operation.
 * **method** *(optional=no, default=N/A)*
-        Describes the method to upload the files. Currently only "filecopy" (uses SMB) or "BITS" are allowed values.
+        Describes the method to upload the files: "filecopy" (uses SMB), "BITS", or "rest" (HTTP/HTTPS, see `REST upload`_).
 * **server** *(optional=no, default=N/A)*
         Specifies the server name (e.g. `file://servername` or `http://servername`, or `https://servername`) when using BITS or SMB.
+
+        For "rest", a scheme and a host, optionally with a port, e.g. ``https://servername:8443``. The path is given in the `rest element <#rest-element>`_.
+* **uri** *(optional=yes, default=N/A)*
+        The destination as a single URL, e.g. ``https://user:password@servername/upload``, instead of ``server``, ``path``, ``user`` and ``password``.
 * **path** *(optional=no, default= / or \\ depending on the method)*
-        Specifies the file share or folder for the upload 
+        Specifies the file share or folder for the upload
 * **user** *(optional=yes, default=the current user (executing DFIR ORC))*
         Specifies the user name to be used to connect to the remote server.
 * **password** *(optional=yes, default=N/A)*
@@ -136,8 +146,9 @@ Attributes
         * NTLM
         * Kerberos
         * Negotiate
+        * AWSv4 (``method="rest"`` only, see `AWS SigV4`_)
 * **operation** *(optional=yes, default=copy)*
-        "copy" or "move" the archives to the upload server.
+        "copy" or "move" the archives to the upload server. With "move", the local file is deleted once it has been sent.
 * **mode** *(optional=yes, default=sync)*
         "sync" or "async": upload can be synchronous or asynchronous (asynchronous allows DFIR ORC to exit prior to BITS jobs completes). "async" is **not** supported for "filecopy" method.
 * **include** *(optional=yes, default=none)*
@@ -146,6 +157,12 @@ Attributes
         Specifies a comma (or semicolon) separated list of patterns, matching the file name of archives, that determine whether an output archive should not be uploaded. When excluded, an output archive is left intact in the output directory (i.e. regardless of the ``operation`` attribute). The ``exclude`` attribute takes precedence over the ``include`` attribute, meaning an archive whose name matches both ``include`` and ``exclude`` patterns will be excluded.
 * **delete_smb_share** *(optional=yes, default=none)*
         Currently only available for BITS over SMB. When set to "true" the connection to the share will be deleted at the end of jobs (with the use of net use /del). This option should only be needed when the share is served by Samba.
+
+``include`` and ``exclude`` select **collected data**: the archives produced by the commands. The run's own files - the log, the console output, the :doc:`outline <outline>` and the :doc:`outcome <outcome>` - are not affected by these filters.
+
+Several ``upload`` elements may be declared. They form a **fallback list**, tried in order until one succeeds, and each entry is used with its own ``operation`` and its own ``include``/``exclude``: a fallback that says ``operation="copy"`` keeps the local archive even when the first entry asked to move it, and one that excludes a file does not receive it.
+
+The filters are per destination, in both directions: a file the first entry excludes is still offered to a later entry that accepts it. ``exclude`` says "this destination does not take that archive", not "this archive stays on the machine" - to keep a file from leaving at all, it must be excluded from every entry.
 
 Example
 -------
@@ -158,6 +175,246 @@ Example
       user="MyORG\BITSUploadClient" password="P@ssw0rd!"
       operation="move"
       include="DFIR-ORC_*_Hives.7z" />
+
+.. _upload-rest:
+
+REST upload
+-----------
+
+With ``method="rest"`` the archives are uploaded over HTTP or HTTPS. The requests are described by `rest <#rest-element>`_ child elements: a single ``PUT``, or the dialog of a server such as WebDAV, Nextcloud or S3 (see `REST server dialogs`_).
+
+.. warning::
+
+    The REST method is new and has only been tested in a laboratory. Before relying on it, run a complete collection against your own server.
+
+The following attributes apply to this method only.
+
+**Transport security**
+
+* **https_security** *(optional=yes, default="tls1.3, tls1.2[xp]")*
+        Minimum TLS version, as a comma separated list of "tls1.0" to "tls1.3": the version given and every higher one are allowed. A version followed by "[xp]" or "[seven]" applies to that system only. "os-default" keeps the system settings, still requiring TLS 1.2 or higher; "os-max" uses only the highest version the system supports.
+
+        The default requires TLS 1.3, or TLS 1.2 on Windows XP and 2003.
+* **server_cert_pin** *(optional=yes, default=none)*
+        One or more certificates, PEM or base64, separated by commas. The server is accepted only if the public key of its certificate matches one of them. This is the way to use a self-signed server. Give several certificates to allow a key change.
+* **insecure** *(optional=yes, default=false)*
+        Allows plain HTTP and TLS below 1.2, and disables certificate validation. For a laboratory only; prefer ``server_cert_pin``.
+* **follow_redirects** *(optional=yes, default=false)*
+        Follows HTTP redirections. Off by default, since a redirection would send the credentials to another server.
+
+**Authentication**
+
+The scheme is given by ``authscheme``:
+
+* **Basic** - with ``user`` and ``password``.
+* **NTLM, Kerberos, Negotiate** - with ``user`` and ``password``. The account DFIR ORC runs under is never used.
+* **AWSv4** - see `AWS SigV4`_.
+* **A token**, e.g. Bearer - written as a header, see below.
+
+Use an account dedicated to uploads, that can be revoked: the credentials embedded in the collector can be read by whoever obtains it.
+
+.. _upload-rest-awsv4:
+
+AWS SigV4
+~~~~~~~~~
+
+``authscheme="AWSv4"`` signs each request as an S3 server expects: AWS S3, or a compatible server such as MinIO, RustFS or SeaweedFS.
+
+..  csv-table::
+    :header: Attribute, Required, Meaning
+    :align: left
+    :widths: auto
+
+    ``access_key``, yes, the access key
+    ``secret_key``, yes, the secret key
+    ``session_token``, no, "the session token of a temporary credential"
+    ``aws_region``, yes, "the region, e.g. ``eu-west-3``"
+    ``aws_service``, "no (default ``s3``)", the service name
+    ``aws_clock``, "no (default ``local``)", "``server`` uses the server's time when the local clock is wrong"
+
+* The keys are used as written: environment variables are not expanded in them. A temporary credential, with ``session_token``, avoids embedding a permanent secret.
+* Write the ``path`` as plain text, e.g. a space as a space, not encoded as ``%20``.
+* Redirections are not followed.
+* Not available on Windows XP and 2003.
+
+.. code:: xml
+
+    <upload job="DFIR-ORC" method="rest"
+      server="https://s3.mycorp.example"
+      operation="move"
+      authscheme="AWSv4"
+      access_key="AKIA..." secret_key="..." aws_region="eu-west-3">
+        <rest http_method="PUT" path="/orc-bucket/incoming/{upload.filename}" body="{upload.local_path}"/>
+    </upload>
+
+**Headers sent with every request**
+
+* **http_header** *(optional=yes, default=none)*
+        One header line, sent with every request, e.g. ``http_header="Authorization: Bearer &lt;token&gt;"``.
+
+To send several headers, use ``header`` child elements of ``upload``, one line each:
+
+.. code:: xml
+
+    <upload method="rest" server="https://collect.mycorp.example">
+        <header>Authorization: Bearer eyJhbGciOi...</header>
+        <header>X-Collection: nightly</header>
+        <rest http_method="PUT" path="/incoming/{upload.filename}" body="{upload.local_path}"/>
+    </upload>
+
+A ``header`` inside a `rest <#rest-element>`_ element is sent with that request only. Headers may use the placeholders below.
+
+**Proxy**
+
+* **proxy** *(optional=yes, default=the machine proxy settings)*
+        How the proxy is found:
+
+        ..  csv-table::
+            :header: Value, Meaning
+            :align: left
+            :widths: auto
+
+            *(attribute absent)*, "the machine proxy settings (``netsh winhttp``)"
+            ``""`` / ``direct`` / ``none``, no proxy
+            ``system``, the machine proxy settings
+            ``wpad`` / ``auto``, automatic discovery (WPAD)
+            ``pac:<url>`` or ``<url>.pac``, a PAC script
+            ``host:port``, this proxy
+* **proxy_bypass** *(optional=yes, default=none)*
+        Hosts reached without the proxy, e.g. ``<local>;*.corp``.
+* **proxy_user**, **proxy_password** *(optional=yes, default=none)*
+        Credentials for the proxy. ``proxy`` must be set, e.g. to "system". Use an account dedicated to the proxy.
+* **proxy_authscheme** *(optional=yes, default=Anonymous)*
+        "Basic", "NTLM" or "Negotiate". For NTLM and Negotiate, give a domain user, e.g. ``DOMAIN\user``.
+
+**Placeholders**
+
+The ``path``, ``http_query``, ``body`` and ``offset`` attributes of a `rest <#rest-element>`_ element, and its headers, may use these placeholders:
+
+..  csv-table::
+    :header: Placeholder, Description
+    :align: left
+    :widths: auto
+
+    {upload.filename}, name of the file
+    {upload.filename_base64}, "name of the file, base64 encoded"
+    {upload.local_path}, local path of the file
+    {upload.range_start}, offset of the chunk being sent
+    {upload.range_end}, offset of the last byte of the chunk
+    {upload.range_length}, length of the chunk
+    {upload.total_size}, size of the file
+    {upload.random:<charset>:<length>}, "a random string, the same for the whole file; charset is hex, num, alpha or alnum, length is 1 to 64"
+
+A value captured with a `response <#response-child-element>`_ element is written ``{name}``.
+
+REST example
+------------
+
+.. warning::
+
+    Understand each parameter before using a configuration: a wrong setting can make the upload insecure, for instance by sending the collection in clear text or to another server.
+
+.. code:: xml
+
+    <upload job="DFIR-ORC" method="rest"
+      server="https://collect.mycorp.example"
+      operation="move"
+      proxy="system" proxy_authscheme="NTLM" proxy_user="MYCORP\orc-proxy" proxy_password="P@ssw0rd!"
+      server_cert_pin="MIIDLDCCAhSgAwIBAgIU...">
+        <rest http_method="PUT" path="/incoming/{upload.filename}" body="{upload.local_path}"
+              chunk_size="1048576">
+            <header>Content-Range: bytes {upload.range_start}-{upload.range_end}/{upload.total_size}</header>
+        </rest>
+    </upload>
+
+A resumable upload asks the server what it already holds, then starts from there:
+
+.. code:: xml
+
+    <upload method="rest" server="https://collect.mycorp.example" operation="move">
+        <rest http_method="HEAD" path="/incoming/{upload.filename}" accept_status="404">
+            <response header="content-length" name="remote_size" default="0"/>
+        </rest>
+        <rest http_method="PUT" path="/incoming/{upload.filename}" body="{upload.local_path}"
+              offset="{remote_size}" chunk_size="1048576">
+            <header>Content-Range: bytes {upload.range_start}-{upload.range_end}/{upload.total_size}</header>
+        </rest>
+    </upload>
+
+More examples, for each tested server, are in the ``tests/RestAgent`` directory of the source tree.
+
+.. _rest-element:
+
+``rest`` Element
+================
+
+*optional=yes, default=N/A*, `parent element: upload <#upload-element>`_
+
+Describes one request sent by ``method="rest"``. Requests are sent in the order they are declared; one of them sends the file.
+
+Attributes
+----------
+
+* **http_method** *(optional=no, default=N/A)*
+        The HTTP verb, e.g. "PUT", "POST", "PATCH", "HEAD", "MKCOL", "MOVE".
+* **path** *(optional=no, default=N/A)*
+        Path of the request on the server, as a template.
+* **http_query** *(optional=yes, default=none)*
+        Query string appended to the path, as a template, e.g. ``?start={upload.range_start}``.
+* **body** *(optional=yes, default=no body)*
+        The file to send, normally ``{upload.local_path}``.
+* **offset** *(optional=yes, default=0)*
+        Where to start in the file, e.g. ``{remote_size}`` captured by a previous step, to resume an upload.
+* **chunk_size** *(optional=yes, default=the whole file in one request)*
+        Sends the file in chunks of that many bytes. Required beyond 4 GB. Each chunk must be identified by ``{upload.range_start}`` in the path, the query or a header.
+* **accept_status** *(optional=yes, default=any 2xx)*
+        Additional HTTP status codes to treat as success, comma separated, e.g. ``404`` on a probe that legitimately finds nothing.
+
+``header`` child element
+------------------------
+
+One header line, sent with this request only. Repeat the element for several headers.
+
+``response`` child element
+--------------------------
+
+Captures a value from the server's answer to this step, for later steps to use.
+
+* **name** *(optional=no, default=N/A)*
+        Name of the captured value, written ``{name}`` in a later step. It cannot start with ``upload.``.
+* **header** *(optional=yes, default=none)*
+        Name of the response header to capture.
+* **dav_property** *(optional=yes, default=none)*
+        Name of a WebDAV property read from a PROPFIND answer, e.g. ``getcontentlength``. Not available in the standard build.
+* **default** *(optional=yes, default=empty)*
+        Value used when the server does not return the header or property.
+
+`Back to Root <#anchor-root>`_
+
+.. _rest-dialogs:
+
+REST server dialogs
+===================
+
+The `rest <#rest-element>`_ elements describe requests, not a protocol: another server can be used by writing its own sequence of requests. These dialogs have been tested:
+
+..  csv-table::
+    :header: Dialog, Steps, Where it has been exercised
+    :align: left
+    :widths: auto
+
+    "Single ``PUT``", one body step, "the reference sink, Nextcloud 35, MinIO, RustFS, SeaweedFS"
+    "Chunked", "one body step with ``chunk_size``, the offset in the path, the query or a ``Content-Range`` header", the reference sink
+    "Resume", "a ``HEAD`` probe capturing ``content-length`` into ``{remote_size}``, then a body step with ``offset=""{remote_size}""``", the reference sink
+    "WebDAV", "``MKCOL`` (with ``accept_status=""405""``), the body step under a temporary name, then ``MOVE`` to the final name", "the reference sink, Nextcloud 35"
+    "Nextcloud chunked upload v2", "``MKCOL`` the collection, ``MKCOL`` an upload directory named by ``{upload.random:...}``, one chunk ``PUT`` per ``{upload.range_start}``, then ``MOVE``", Nextcloud 35
+    "S3", "one ``PUT`` per object, anonymous or signed (`AWS SigV4`_)", "MinIO, RustFS, SeaweedFS"
+
+* A ``PUT`` replaces the file: resuming only works with a server that appends. With Nextcloud or S3, an interrupted upload starts again from the beginning.
+* Chunks are named by their offset, and the server must sort them as numbers. Nextcloud 35 does.
+* With S3, a file is sent in a single request, which limits it to 5 GB.
+
+The test configurations for these servers are in ``tests/RestAgent`` of the source tree.
 
 `Back to Root <#anchor-root>`_
 
