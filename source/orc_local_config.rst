@@ -161,6 +161,8 @@ Attributes
 
 Several ``upload`` elements may be declared. They form a **fallback list**, tried in order until one succeeds, and each entry is used with its own ``operation`` and its own ``include``/``exclude``: a fallback that says ``operation="copy"`` keeps the local archive even when the first entry asked to move it, and one that excludes a file does not receive it.
 
+The filters are per destination, in both directions: a file the first entry excludes is still offered to a later entry that accepts it. ``exclude`` says "this destination does not take that archive", not "this archive stays on the machine" - to keep a file from leaving at all, it must be excluded from every entry. :doc:`ToolEmbed <ToolEmbed>` warns at embedding time when the entries of a configuration do not all carry the same filters.
+
 Example
 -------
 
