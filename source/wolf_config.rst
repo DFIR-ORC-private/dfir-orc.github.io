@@ -397,7 +397,7 @@ Attributes
         * Overwrite: previous archives are overwritten by new executions of ``DFIR-Orc.exe``.
         * Once: if the target file already exists (and is not empty), then this archive is skipped.
 
-        .. note:: This is also taken into account when associated with the upload functionality.
+        .. note:: This is also taken into account when associated with the upload functionality. The archive is skipped on the destination's account only when the destination holds the **whole** file: its size is compared with the local archive, and a copy that is merely present but shorter is a partial upload, so the set carries on and the archive is offered to the upload list again - the first entry, then the fallback candidates. When no local archive remains to compare against, a file on the destination is taken as complete: only a full upload deletes the local copy (``operation="move"``), and a transfer that sent nothing keeps it.
 * **compression** *(optional=yes, default=normal)*
         Configures the compression level used by the compression engine (7zip & zip only). Values can be: None, Fastest, Fast, Normal, Maximum, Ultra.
 * **command_timeout** *(optional=yes, default=3 hours)*
