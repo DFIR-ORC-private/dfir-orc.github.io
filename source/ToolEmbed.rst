@@ -199,18 +199,17 @@ This element can be overridden by ``run32`` or ``run64`` elements (or options).
 Attributes
 ----------
 * **args** *(optional=yes, default=N/A)*
-    The optional ``args`` attribute allows the addition of arguments. This yields a command line starting with the specified binary, followed by the optional args, then potentially followed by arguments passed on by Mothership.
+    The optional ``args`` attribute allows the addition of arguments. This yields a command line starting with the specified binary, followed by the optional args, then potentially followed by arguments passed on by the capsule.
 
 Example
 -------
 
 .. code:: xml
 
-    <input>.\tools\DFIR-Orc_x86.exe</input>
     ...
     <run args="WolfLauncher">self:#</run>
 
-This example results in the Mothership binary relaunching itself with the added argument "WolfLauncher" (which results in the execution of the code of WolfLauncher, the scheduler for DFIR ORC).
+This example results in the capsule relaunching itself with the added argument "WolfLauncher" (which results in the execution of the code of WolfLauncher, the scheduler for DFIR ORC).
 Notation ``self:#`` and resources are documented in :doc:`resources`.
 
 `Back to Root <#anchor-root-toolembed>`_
@@ -231,18 +230,17 @@ When specified this element overrides a ``run`` element (or option).
 Attributes
 ----------
 * **args** *(optional=yes, default=N/A)*
-    The optional ``args`` attribute allows the addition of arguments. This yields a command line starting with the specified binary, followed by the optional args, then potentially followed by arguments passed on by Mothership.
+    The optional ``args`` attribute allows the addition of arguments. This yields a command line starting with the specified binary, followed by the optional args, then potentially followed by arguments passed on by the capsule.
 
 Example
 -------
 
 .. code:: xml
 
-    <input>.\tools\DFIR-Orc_x86.exe</input>
     ...
     <run32 args="WolfLauncher">self:#</run32>
 
-This example results in the Mothership binary relaunching itself with the added argument "WolfLauncher" (the scheduler for DFIR ORC).
+This example results in the capsule relaunching itself with the added argument "WolfLauncher" (the scheduler for DFIR ORC).
 Notation ``self:#`` and resources are documented in :doc:`resources`.
 
 `Back to Root <#anchor-root-toolembed>`_
