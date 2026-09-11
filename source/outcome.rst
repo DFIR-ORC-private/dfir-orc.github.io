@@ -4,6 +4,8 @@ DFIR-ORC Execution Outcome
 
 The DFIR-ORC Execution Outcome (introduced in dfir-orc v10.1.0) is a json file to summarize the dfir-orc execution results.
 
+When a recipient is configured, the outcome is written compressed and encrypted like an archive, with a ``.7z.p7b`` suffix (e.g. ``outcome.json.7z.p7b``), unless its element sets ``encrypt="no"``. It is decrypted with ``orc-decrypt`` and the private key of any recipient, as described in :ref:`Decrypting a collection <wolf_config-decrypting-files>`.
+
 Example
 -------
 

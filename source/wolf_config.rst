@@ -65,6 +65,16 @@ The log element can be used to create an optional log file of DFIR ORC execution
 
 The log message are passing through "sinks" like 'console' or 'file'. To configure log output a sink must be specified.
 
+Attributes
+-----------
+
+* **encrypt** *(optional=yes, default=yes)*
+        When a `recipient <#recipient-element>`_ is configured, the log file is compressed and encrypted for it like an archive, and gains a ``.7z.p7b`` suffix. Set it to "no" to keep the log in clear text.
+
+        The log is encrypted **once closed**, not as it is written: a CMS envelope has to be complete to be decrypted, so encrypting on the fly would make the log of an interrupted collection unreadable. It therefore stays readable on the host while the collection runs, and the clear text file is removed once the encrypted one exists.
+* **upload** *(optional=yes, default=yes)*
+        Set it to "no" to keep the log file on the host: it is still written, and encrypted as ``encrypt`` says, but it is not sent to any `upload <#upload-element>`_. An upload's ``include``/``exclude`` filters do not apply to the log, so this attribute is the only way to keep it from leaving the machine.
+
 ``Console`` sink element
 -------------------------
 
@@ -115,12 +125,22 @@ Example
 `Back to Root <#anchor-root>`_
 
 
+.. _wolf_config-console-element:
+
 ``console`` Element
 ===================
 
 *optional=yes, default=no console output file*, `parent element: wolf <#wolf-element>`_
 
 With a configurated Orc in can be convenient to capture console output to a file but keeping console output visible. This elements is complementary to the usual logs as it is intended to be as human readable as possible.
+
+Attributes
+-----------
+
+* **encrypt** *(optional=yes, default=yes)*
+        When a `recipient <#recipient-element>`_ is configured, the console output file is compressed and encrypted for it like an archive, and gains a ``.7z.p7b`` suffix. Set it to "no" to keep it in clear text. As with the log, it is encrypted once closed rather than as it is written.
+* **upload** *(optional=yes, default=yes)*
+        Set it to "no" to keep the console output file on the host: it is still written, and encrypted as ``encrypt`` says, but it is not sent to any `upload <#upload-element>`_. An upload's ``include``/``exclude`` filters do not apply to it.
 
 ``output`` Element
 -------------------
@@ -178,6 +198,10 @@ Attributes
         * be appended to an existing file -> use "append"
         * be created as a new file (and logging should fail if file exists) -> use "create_new"
         * truncate any existing file or create a new file -> use "truncate"
+* **encrypt** *(optional=yes, default=yes)*
+        When a `recipient <#recipient-element>`_ is configured, the outline is written compressed and encrypted for it like an archive, at the configured name with a ``.7z.p7b`` suffix, and nothing is written to the clear text name. Set it to "no" to keep the json in clear text.
+* **upload** *(optional=yes, default=yes)*
+        Set it to "no" to keep the outline on the host: it is still written, and encrypted as ``encrypt`` says, but it is not sent to any `upload <#upload-element>`_. An upload's ``include``/``exclude`` filters do not apply to it.
 
 Example
 --------
@@ -221,6 +245,10 @@ Attributes
         * be appended to an existing file -> use "append"
         * be created as a new file (and logging should fail if file exists) -> use "create_new"
         * truncate any existing file or create a new file -> use "truncate"
+* **encrypt** *(optional=yes, default=yes)*
+        When a `recipient <#recipient-element>`_ is configured, the outcome is written compressed and encrypted for it like an archive, at the configured name with a ``.7z.p7b`` suffix, and nothing is written to the clear text name. Set it to "no" to keep the json in clear text.
+* **upload** *(optional=yes, default=yes)*
+        Set it to "no" to keep the outcome on the host: it is still written, and encrypted as ``encrypt`` says, but it is not sent to any `upload <#upload-element>`_. An upload's ``include``/``exclude`` filters do not apply to it.
 
 Example
 --------
@@ -249,6 +277,8 @@ Attributes
 * **archive** *(optional=no, default=N/A)*
         Comma separated list of archive keyword specs to match against archive names. Specifies one or more archives encrypted in a CMS PKCS#7 message (cf http://tools.ietf.org/html/rfc2315).
 
+        It selects archives only: the outline, outcome, log and console output are encrypted for every recipient (see `Decrypting a collection`_).
+
 Example
 --------
 
@@ -259,6 +289,58 @@ Example
       ... value ...
     -----END CERTIFICATE-----
   </recipient>
+
+.. _wolf_config-decrypting-files:
+
+.. _wolf_config-decrypting-archives:
+
+Decrypting a collection
+-----------------------
+
+Encrypted files are decrypted with `orc-decrypt <https://github.com/DFIR-ORC/orc-decrypt>`_ and the private key of a configured recipient. Point it at the directory where the collection was retrieved: it decrypts every ``.p7b`` file found there and in its subdirectories into the output directory, where each file keeps its name without the ``.p7b`` suffix. Every decrypted file is a ``7z`` archive, extracted with 7-Zip: ``outcome.json.7z`` holds ``outcome.json``, just as ``Hives.7z`` holds the collected hives.
+
+.. code:: shell
+
+  orc-decrypt -k recipient.key --output-dir ./decrypted ./collection
+  7z x ./decrypted/outcome.json.7z
+
+A recipient only opens what was encrypted for it: the archives its ``archive`` attribute matches, and the outline, outcome, log and console output, which are encrypted for every recipient. Read the summary line ``Finished processing N archives ... X failed, Y succeeded``: a file that could not be decrypted is reported there and in the log, but it does not change the exit code of ``orc-decrypt``.
+
+``orc-decrypt`` relies on ``unstream``, built from the same repository (see its README). If ``unstream`` is not in the ``PATH``, give its location with ``--unstream-path``.
+
+``-k`` expects a PEM private key without password protection. When the recipient's key is held in a ``.pfx``/``.p12`` file, for instance exported from the Windows certificate store, extract it first:
+
+.. code:: shell
+
+  openssl pkcs12 -in recipient.pfx -nocerts -nodes -out recipient.key
+
+If OpenSSL 3 reports an unsupported algorithm while reading an older ``.pfx``, add ``-legacy``. ``recipient.key`` is then an unprotected private key: keep it on the analysis workstation only.
+
+Encrypting and uploading independently
+--------------------------------------
+
+Whether the outline, the outcome, the log and the console output are encrypted and whether they are uploaded are two separate choices, made on its own element with ``encrypt`` and ``upload``. In this example the outline and the log are encrypted but stay on the host, while the outcome and the console output are uploaded in clear text next to the encrypted archive:
+
+.. code:: xml
+
+  <recipient name="analyst" archive="*">
+    -----BEGIN CERTIFICATE-----
+      ... value ...
+    -----END CERTIFICATE-----
+  </recipient>
+
+  <outline disposition="truncate" upload="no">outline.json</outline>
+  <outcome disposition="truncate" encrypt="no">outcome.json</outcome>
+
+  <log upload="no">
+    <file level="debug"><output disposition="truncate">wolf.log</output></file>
+  </log>
+
+  <console encrypt="no">
+    <output>console.log</output>
+  </console>
+
+The host keeps ``outline.json.7z.p7b``, ``outcome.json``, ``wolf.log.7z.p7b``, ``console.log`` and the archive; the upload destination receives only ``outcome.json``, ``console.log`` and the archive.
 
 `Back to Root <#anchor-root>`_
 
@@ -278,9 +360,11 @@ Attributes
 * **job** *(optional=yes, default=none)*
         Describes the upload operation.
 * **method** *(optional=no, default=N/A)*
-        Describes the method to upload the files. Currently only "filecopy" (uses SMB) or "BITS" are allowed values.
+        Describes the method to upload the files: "filecopy" (uses SMB), "BITS", or "rest" (HTTP/HTTPS).
+
+        The "rest" method takes its own attributes - the ``rest`` dialog, authentication including `AWS SigV4 <orc_local_config.html#aws-sigv4>`_, TLS and pinning, proxy - which are documented once, with the :doc:`local configuration file <orc_local_config>`. It is **new and has only been lightly tested**: see the warning there before deploying it.
 * **server** *(optional=no, default=N/A)*
-        Specifies the server name (e.g. `file://servername` or `http://servername`, or `https://servername`) when using BITS or SMB.
+        Specifies the server name (e.g. `file://servername` or `http://servername`, or `https://servername`) when using BITS or SMB. For "rest" the value names a bare host, optionally with a port; a path is refused.
 * **path** *(optional=no, default= / or \\ depending on the method)*
         Specifies the file share or folder for the upload
 * **user** *(optional=yes, default=the current user (executing DFIR ORC))*
@@ -295,6 +379,7 @@ Attributes
         * NTLM
         * Kerberos
         * Negotiate
+        * AWSv4 (``method="rest"`` only, for an S3 endpoint; see `AWS SigV4 <orc_local_config.html#aws-sigv4>`_)
 * **operation** *(optional=yes, default=copy)*
         "copy" or "move" the archives to the upload server.
 * **mode** *(optional=yes, default=sync)*
@@ -303,6 +388,10 @@ Attributes
         Specifies a comma (or semicolon) separated list of patterns, matching the file name of archives, that determine whether an output archive from ``DFIR-Orc.exe`` will be uploaded to the specified location. When missing, all archives are uploaded (if not explicitly excluded, see below). When specified, only archives whose name matches one of the patterns will be uploaded.
 * **exclude** *(optional=yes, default=none)*
         Specifies a comma (or semicolon) separated list of patterns, matching the file name of archives, that determine whether an output archive should not be uploaded. When excluded, an output archive is left intact in the output directory (i.e. regardless of the ``operation`` attribute). The ``exclude`` attribute takes precedence over the ``include`` attribute, meaning an archive whose name matches both ``include`` and ``exclude`` patterns will be excluded.
+
+Both filters select **collected data**, that is the archives. The files the collection produces about itself - the log, the console output, the outline and the outcome - are uploaded whatever the filters say, unless their own element sets ``upload="no"``.
+
+Several ``upload`` elements may be declared. They are tried in order until one succeeds, and each is used with its own ``operation`` and its own ``include``/``exclude``.
 
 Example
 -------

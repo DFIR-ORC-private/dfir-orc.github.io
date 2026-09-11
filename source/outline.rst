@@ -4,6 +4,8 @@ DFIR-ORC Execution Outline
 
 The DFIR-ORC Execution Outline (introduced in dfir-orc v10.0.14) is a json file to summarize the dfir-orc execution context.
 
+When a recipient is configured, the outline is written compressed and encrypted like an archive, with a ``.7z.p7b`` suffix (e.g. ``outline.json.7z.p7b``), unless its element sets ``encrypt="no"``. It is decrypted with ``orc-decrypt`` and the private key of any recipient, as described in :ref:`Decrypting a collection <wolf_config-decrypting-files>`.
+
 DFIR-ORC binary executed
 ========================
 

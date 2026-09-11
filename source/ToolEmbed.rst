@@ -102,7 +102,7 @@ ToolEmbed tries to detect a risky configuration and warns about it, but still bu
 
 It warns when:
 
-* collected data is uploaded unencrypted: an ``archive`` no `recipient <wolf_config.html#recipient-element>`_ covers, or a ``log``, ``console``, ``outline`` or ``outcome`` without encryption (see :ref:`Encrypted output files <wolf_config-encrypted-output-files>`);
+* collected data is uploaded unencrypted: an ``archive`` no `recipient <wolf_config.html#recipient-element>`_ covers, or a ``log``, ``console``, ``outline`` or ``outcome`` without encryption;
 * the `upload <orc_local_config.html#upload-element>`_ entries do not have the same ``include``/``exclude``.
 
 .. _toolembed-toolembed-element:
