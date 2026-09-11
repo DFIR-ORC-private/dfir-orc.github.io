@@ -21,7 +21,12 @@ Its point is to be exhaustive from the point of view of existing usable elements
 | <`dfir-orc <#dfir-orc-element>`_ *attributes="..."*>
 |      <`temporary <#temporary-element>`_> *value* <`/temporary <#temporary-element>`_>
 |      <`output <#output-element>`_> *value* <`/output <#output-element>`_>
-|      <`upload <#upload-element>`_ *attributes="..."* />
+|      <`upload <#upload-element>`_ *attributes="..."*>
+|          <`rest <#rest-element>`_ *attributes="..."*>
+|              <`header <#header-child-element>`_> *value* </header>
+|              <`response <#response-child-element>`_ *attributes="..."* />
+|          </`rest <#rest-element>`_>
+|      <`/upload <#upload-element>`_>
 |      <`recipient <#recipient-element>`_ *attributes="..."*> *value* <`/recipient <#recipient-element>`_>
 |      <`key <#key-element>`_> *value*  <`/key <#key-element>`_>
 |      <`enable_key <#enable-key-and-disable-key-elements>`_> *value* <`/enable_key <#enable-key-and-disable-key-elements>`_>
@@ -119,9 +124,11 @@ Attributes
 * **job** *(optional=yes, default=none)*
         Describes the upload operation.
 * **method** *(optional=no, default=N/A)*
-        Describes the method to upload the files. Currently only "filecopy" (uses SMB) or "BITS" are allowed values.
+        Describes the method to upload the files: "filecopy" (uses SMB), "BITS", or "rest" (HTTP/HTTPS, see `REST upload`_).
 * **server** *(optional=no, default=N/A)*
         Specifies the server name (e.g. `file://servername` or `http://servername`, or `https://servername`) when using BITS or SMB.
+
+        For the "rest" method the value must carry a scheme and name a bare host, optionally with a port (`https://servername` or `https://servername:8443`). A path is refused: it belongs in the `rest element <#rest-element>`_ instead.
 * **path** *(optional=no, default= / or \\ depending on the method)*
         Specifies the file share or folder for the upload 
 * **user** *(optional=yes, default=the current user (executing DFIR ORC))*
@@ -137,7 +144,7 @@ Attributes
         * Kerberos
         * Negotiate
 * **operation** *(optional=yes, default=copy)*
-        "copy" or "move" the archives to the upload server.
+        "copy" or "move" the archives to the upload server. With "move" the local file is deleted only once data has actually been sent: an upload that transmits nothing - a `rest element <#rest-element>`_ dialog with no body step, or a resume ``offset`` that already covers the whole file - is reported as a failed upload and the archive is kept. An empty file is not that case, it is uploaded as one zero-length request.
 * **mode** *(optional=yes, default=sync)*
         "sync" or "async": upload can be synchronous or asynchronous (asynchronous allows DFIR ORC to exit prior to BITS jobs completes). "async" is **not** supported for "filecopy" method.
 * **include** *(optional=yes, default=none)*
@@ -146,6 +153,10 @@ Attributes
         Specifies a comma (or semicolon) separated list of patterns, matching the file name of archives, that determine whether an output archive should not be uploaded. When excluded, an output archive is left intact in the output directory (i.e. regardless of the ``operation`` attribute). The ``exclude`` attribute takes precedence over the ``include`` attribute, meaning an archive whose name matches both ``include`` and ``exclude`` patterns will be excluded.
 * **delete_smb_share** *(optional=yes, default=none)*
         Currently only available for BITS over SMB. When set to "true" the connection to the share will be deleted at the end of jobs (with the use of net use /del). This option should only be needed when the share is served by Samba.
+
+``include`` and ``exclude`` select **collected data**: the archives produced by the commands. The run's own files - the log, the console output, the :doc:`outline <outline>` and the :doc:`outcome <outcome>` - are uploaded whatever the filters say, since they are how a collection accounts for itself rather than something the operator chose to collect.
+
+Several ``upload`` elements may be declared. They form a **fallback list**, tried in order until one succeeds, and each entry is used with its own ``operation`` and its own ``include``/``exclude``: a fallback that says ``operation="copy"`` keeps the local archive even when the first entry asked to move it, and one that excludes a file does not receive it.
 
 Example
 -------
@@ -158,6 +169,154 @@ Example
       user="MyORG\BITSUploadClient" password="P@ssw0rd!"
       operation="move"
       include="DFIR-ORC_*_Hives.7z" />
+
+.. _upload-rest:
+
+REST upload
+-----------
+
+With ``method="rest"`` the archives are uploaded over HTTP or HTTPS, and the requests to issue are described by one or more `rest <#rest-element>`_ child elements. This covers a plain ``PUT`` as well as the resumable and multi-step dialogs of servers such as WebDAV or tus.io.
+
+The following attributes apply to this method only.
+
+**Transport security**
+
+* **https_security** *(optional=yes, default="tls1.3, tls1.2[xp]")*
+        Comma separated list of TLS versions ("tls1.0" to "tls1.3"), acting as a **floor**: the named version and every higher one the operating system supports are enabled. A version may carry an OS target between brackets - "[xp]" or "[seven]" - which replaces the baseline on that system only, since those releases cannot negotiate the newer versions. The value "os-default" (or "none") leaves the system policy untouched.
+
+        The default therefore requires TLS 1.3 everywhere except on Windows XP/2003, where it requires TLS 1.2. A server that cannot reach the floor fails the handshake rather than being silently accepted; the log then names the versions this client required.
+* **server_cert_pin** *(optional=yes, default=none)*
+        One or more X.509 certificates, as PEM or base64, separated by commas or semicolons. The server is accepted only if the public key (SPKI) of the certificate it presents matches one of them. This is the secure way to use a self-signed server: it is independent of the machine's trust store and survives certificate renewal with the same key, and it needs no ``insecure``. Several values allow key rotation.
+* **insecure** *(optional=yes, default=false)*
+        Authorises transports that are insecure by construction: plain HTTP, TLS below 1.2, **and** disabling certificate validation altogether. Without it, a plain-HTTP REST upload is refused when the configuration is embedded. Prefer ``server_cert_pin`` for a self-signed server.
+* **follow_redirects** *(optional=yes, default=false)*
+        Lets WinHTTP follow a 3xx redirection. Off by default: a redirection would re-send the preset credentials to the target it names, which certificate pinning does not cover. An HTTPS to HTTP downgrade is refused even when this is enabled.
+
+**Proxy**
+
+* **proxy** *(optional=yes, default=the machine-wide configuration)*
+        Selects how the proxy is found:
+
+        ..  csv-table::
+            :header: Value, Meaning
+            :align: left
+            :widths: auto
+
+            *(attribute absent)*, "follow the machine-wide WinHTTP configuration (``netsh winhttp``), which connects direct when the machine has no proxy"
+            ``""`` / ``direct`` / ``none``, "no proxy and no discovery, whatever the machine is configured with"
+            ``system``, the machine-wide proxy, named explicitly
+            ``wpad`` / ``auto``, "WPAD auto-detection (DHCP/DNS); if nothing is discovered the upload is refused rather than silently sent direct"
+            ``pac:<url>``, the PAC script at that URL
+            ``<...>.pac``, "a PAC script, recognised by the ``.pac`` suffix of the URL"
+            ``host:port``, an explicit proxy
+
+        Absent and empty are deliberately different: a configuration that never mentions a proxy takes the machine as it finds it, while ``proxy=""`` states that there is no proxy. Note that WPAD is spoofable on a hostile network, and that a PAC script is downloaded and executed to choose the proxy.
+
+        The value may come from an environment variable. If that variable is **not set** on the collected host, the reference survives expansion, no proxy can be resolved, and the upload is refused rather than attempting to reach a host by that literal name.
+* **proxy_bypass** *(optional=yes, default=none)*
+        WinHTTP bypass list for an explicit proxy, e.g. ``<local>;*.corp``.
+* **proxy_user**, **proxy_password** *(optional=yes, default=none)*
+        Credentials for an authenticating proxy. They are always explicit: DFIR ORC never offers the identity it runs under, so a collection running as SYSTEM never presents the machine account to a proxy. Because the credential is recoverable from the embedded binary, use a scoped, revocable, proxy-only account.
+
+        They require the destination to be named: ``proxy="system"`` has to be written out loud to send them to the machine-wide proxy.
+* **proxy_authscheme** *(optional=yes, default=Anonymous)*
+        "Basic", "NTLM" or "Negotiate". The scheme is never learned from the proxy's ``407``. **NTLM and Negotiate need a domain-qualified user** (``DOMAIN\user`` or ``user@domain.fqdn``): WinHTTP sends an empty domain for a bare name, which a real proxy rejects with a repeating ``407``.
+
+**Placeholders**
+
+The ``path``, ``http_query``, ``body`` and ``offset`` attributes of a `rest <#rest-element>`_ element, and its headers, are templates. The following are substituted:
+
+..  csv-table::
+    :header: Placeholder, Description
+    :align: left
+    :widths: auto
+
+    {upload.filename}, name of the file being uploaded
+    {upload.filename_base64}, the same name, base64 encoded
+    {upload.local_path}, full local path of the file being uploaded
+    {upload.range_start}, offset of the chunk being sent
+    {upload.range_end}, offset of its last byte (start + length - 1)
+    {upload.range_length}, length of the chunk being sent
+    {upload.total_size}, total size of the file being sent
+    {upload.random:<charset>:<length>}, "a fresh random string, drawn once per file; charset is hex, num, alpha or alnum and length is 1 to 64"
+
+Values captured from a server response (see the ``response`` element below) are substituted under the name the configuration gives them, which may not start with ``upload.``. A captured value is never re-scanned for placeholders, so a server cannot inject one.
+
+REST example
+------------
+
+.. code:: xml
+
+    <upload job="DFIR-ORC" method="rest"
+      server="https://collect.mycorp.example"
+      operation="move"
+      proxy="system" proxy_authscheme="NTLM" proxy_user="MYCORP\orc-proxy" proxy_password="P@ssw0rd!"
+      server_cert_pin="MIIDLDCCAhSgAwIBAgIU...">
+        <rest http_method="PUT" path="/incoming/{upload.filename}" body="{upload.local_path}"
+              chunk_size="1048576">
+            <header>Content-Range: bytes {upload.range_start}-{upload.range_end}/{upload.total_size}</header>
+        </rest>
+    </upload>
+
+A resumable upload asks the server what it already holds, then starts from there:
+
+.. code:: xml
+
+    <upload method="rest" server="https://collect.mycorp.example" operation="move">
+        <rest http_method="HEAD" path="/incoming/{upload.filename}" accept_status="404">
+            <response header="content-length" name="remote_size" default="0"/>
+        </rest>
+        <rest http_method="PUT" path="/incoming/{upload.filename}" body="{upload.local_path}"
+              offset="{remote_size}" chunk_size="1048576">
+            <header>Content-Range: bytes {upload.range_start}-{upload.range_end}/{upload.total_size}</header>
+        </rest>
+    </upload>
+
+.. _rest-element:
+
+``rest`` Element
+================
+
+*optional=yes, default=N/A*, `parent element: upload <#upload-element>`_
+
+Describes one request of the dialog used by ``method="rest"``. Several ``rest`` elements may be declared and are issued in the order they appear: exactly one of them carries the body, the others are control requests (a probe, a lock, a rename, a completion notice).
+
+Attributes
+----------
+
+* **http_method** *(optional=no, default=N/A)*
+        The HTTP verb, e.g. "PUT", "POST", "PATCH", "HEAD", "MKCOL", "MOVE".
+* **path** *(optional=no, default=N/A)*
+        Path of the request on the server, as a template.
+* **http_query** *(optional=yes, default=none)*
+        Query string appended to the path, as a template, e.g. ``?start={upload.range_start}``.
+* **body** *(optional=yes, default=no body)*
+        The file to send as the request body. This is the step that uploads; use ``{upload.local_path}`` for the file being collected. A step without ``body`` sends no content.
+* **offset** *(optional=yes, default=0)*
+        Offset the body starts at, as a template, e.g. ``{remote_size}`` fed by a probe. The value is clamped to the size of the body.
+* **chunk_size** *(optional=yes, default=the whole file in one request)*
+        Splits the body into requests of that many bytes. Required beyond 4 GB, which a single request cannot carry.
+* **accept_status** *(optional=yes, default=any 2xx)*
+        Additional HTTP status codes to treat as success, comma separated, e.g. ``404`` on a probe that legitimately finds nothing.
+
+``header`` child element
+------------------------
+
+One complete header line, used verbatim. The value is a template. Repeat the element for several headers; it is never split on a comma or a semicolon, which are legal in a header value.
+
+``response`` child element
+--------------------------
+
+Captures a value from the server's answer to this step, for later steps to use.
+
+* **name** *(optional=no, default=N/A)*
+        Name the captured value is substituted under, written ``{name}`` in a later step. It may not start with ``upload.``, which is reserved.
+* **header** *(optional=yes, default=none)*
+        Name of the response header to capture.
+* **dav_property** *(optional=yes, default=none)*
+        Name of a WebDAV property to capture from a PROPFIND answer, e.g. ``getcontentlength``.
+* **default** *(optional=yes, default=empty)*
+        Value used when the server does not return the header or property.
 
 `Back to Root <#anchor-root>`_
 
