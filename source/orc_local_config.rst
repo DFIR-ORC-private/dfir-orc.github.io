@@ -22,8 +22,9 @@ Its point is to be exhaustive from the point of view of existing usable elements
 |      <`temporary <#temporary-element>`_> *value* <`/temporary <#temporary-element>`_>
 |      <`output <#output-element>`_> *value* <`/output <#output-element>`_>
 |      <`upload <#upload-element>`_ *attributes="..."*>
+|          <`header <#headers-sent-with-every-request>`__> *value* </header>
 |          <`rest <#rest-element>`_ *attributes="..."*>
-|              <`header <#header-child-element>`_> *value* </header>
+|              <`header <#header-child-element>`__> *value* </header>
 |              <`response <#response-child-element>`_ *attributes="..."* />
 |          </`rest <#rest-element>`_>
 |      <`/upload <#upload-element>`_>
@@ -129,8 +130,10 @@ Attributes
         Specifies the server name (e.g. `file://servername` or `http://servername`, or `https://servername`) when using BITS or SMB.
 
         For the "rest" method the value must carry a scheme and name a bare host, optionally with a port (`https://servername` or `https://servername:8443`). A path is refused: it belongs in the `rest element <#rest-element>`_ instead.
+* **uri** *(optional=yes, default=N/A)*
+        Specifies the destination as a single URL instead of separate attributes, e.g. ``https://user:password@servername/upload``. It is exclusive with ``server``, ``path``, ``user`` and ``password``: naming both is refused.
 * **path** *(optional=no, default= / or \\ depending on the method)*
-        Specifies the file share or folder for the upload 
+        Specifies the file share or folder for the upload
 * **user** *(optional=yes, default=the current user (executing DFIR ORC))*
         Specifies the user name to be used to connect to the remote server.
 * **password** *(optional=yes, default=N/A)*
@@ -191,6 +194,23 @@ The following attributes apply to this method only.
         Authorises transports that are insecure by construction: plain HTTP, TLS below 1.2, **and** disabling certificate validation altogether. Without it, a plain-HTTP REST upload is refused when the configuration is embedded. Prefer ``server_cert_pin`` for a self-signed server.
 * **follow_redirects** *(optional=yes, default=false)*
         Lets WinHTTP follow a 3xx redirection. Off by default: a redirection would re-send the preset credentials to the target it names, which certificate pinning does not cover. An HTTPS to HTTP downgrade is refused even when this is enabled.
+
+**Headers sent with every request**
+
+* **http_header** *(optional=yes, default=none)*
+        One complete header line, used verbatim and sent with every request of the dialog, e.g. ``http_header="Authorization: Bearer &lt;token&gt;"``. The value is never split on a comma or a semicolon, which are legal in a header value; to send several headers, repeat the ``header`` child element below.
+
+A ``header`` child element of ``upload`` carries one header line each, again sent with every request:
+
+.. code:: xml
+
+    <upload method="rest" server="https://collect.mycorp.example">
+        <header>Authorization: Bearer eyJhbGciOi...</header>
+        <header>X-Collection: nightly</header>
+        <rest http_method="PUT" path="/incoming/{upload.filename}" body="{upload.local_path}"/>
+    </upload>
+
+A ``header`` declared inside a `rest <#rest-element>`_ element applies to that request only. Both forms are templates, so they may carry the placeholders listed below.
 
 **Proxy**
 
