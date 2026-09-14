@@ -197,11 +197,11 @@ The following attributes apply to this method only.
 
         An OS target must be a single bracketed tag closing its entry, such as ``tls1.2[xp]``. An entry with a malformed tag - ``tls1.2[xp`` missing its bracket, ``tls1.3[seven]x`` followed by more text, or ``tls1.2[xp][seven]`` with two tags - has no reliable meaning, so the configuration is refused when it is embedded, and the upload is refused when such a value reaches a collection through a local configuration.
 * **server_cert_pin** *(optional=yes, default=none)*
-        One or more X.509 certificates, as PEM or base64, separated by commas or semicolons. The server is accepted only if the public key (SPKI) of the certificate it presents matches one of them. This is the secure way to use a self-signed server: it is independent of the machine's trust store and survives certificate renewal with the same key, and it needs no ``insecure``. Several values allow key rotation.
+        One or more X.509 certificates, as PEM or base64, separated by commas or semicolons. The server is accepted only if the public key (SPKI) of the certificate it presents matches one of them. This is the secure way to use a self-signed server: it is independent of the machine's trust store and survives certificate renewal with the same key, and it needs no ``insecure``. Several values allow key rotation. Every value must be a certificate: an unreadable one (a bare public key, damaged base64) is refused when the configuration is embedded, rather than skipped until the day the server key rotates onto it. The key is compared on every connection before anything is sent on it, including a connection opened by a followed redirect or a request resent after an authentication challenge.
 * **insecure** *(optional=yes, default=false)*
         Authorises transports that are insecure by construction: plain HTTP, TLS below 1.2, **and** disabling certificate validation altogether. Without it, a plain-HTTP REST upload is refused when the configuration is embedded. Prefer ``server_cert_pin`` for a self-signed server.
 * **follow_redirects** *(optional=yes, default=false)*
-        Lets WinHTTP follow a 3xx redirection. Off by default: a redirection would re-send the preset credentials to the target it names, which certificate pinning does not cover. An HTTPS to HTTP downgrade is refused even when this is enabled.
+        Lets WinHTTP follow a 3xx redirection. Off by default: a redirection re-sends the preset credentials to the target it names, which only has to hold a certificate the machine trusts. With ``server_cert_pin``, the target must present a pinned key before anything is sent to it. An HTTPS to HTTP downgrade is refused even when this is enabled.
 
 **Headers sent with every request**
 
