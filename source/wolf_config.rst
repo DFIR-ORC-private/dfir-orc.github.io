@@ -69,7 +69,7 @@ Attributes
 -----------
 
 * **encrypt** *(optional=yes, default=yes)*
-        When a `recipient <#recipient-element>`_ is configured, the log file is encrypted for it and gains a ``.p7b`` suffix (see `Encrypted output files`_). Set it to "no" to keep the log in clear text.
+        When a `recipient <#recipient-element>`_ is configured, the log file is compressed and encrypted for it like an archive, and gains a ``.7z.p7b`` suffix (see `Encrypted output files`_). Set it to "no" to keep the log in clear text.
 
         The log is encrypted **once closed**, not as it is written: a CMS envelope has to be complete to be decrypted, so encrypting on the fly would make the log of an interrupted collection unreadable. It therefore stays readable on the host while the collection runs, and the clear text file is removed once the encrypted one exists.
 * **upload** *(optional=yes, default=yes)*
@@ -136,7 +136,7 @@ Attributes
 -----------
 
 * **encrypt** *(optional=yes, default=yes)*
-        When a `recipient <#recipient-element>`_ is configured, the console output file is encrypted for it and gains a ``.p7b`` suffix (see `Encrypted output files`_). Set it to "no" to keep it in clear text. As with the log, it is encrypted once closed rather than as it is written.
+        When a `recipient <#recipient-element>`_ is configured, the console output file is compressed and encrypted for it like an archive, and gains a ``.7z.p7b`` suffix (see `Encrypted output files`_). Set it to "no" to keep it in clear text. As with the log, it is encrypted once closed rather than as it is written.
 * **upload** *(optional=yes, default=yes)*
         Set it to "no" to keep the console output file on the host: it is still written, and encrypted as ``encrypt`` says, but it is not sent to any `upload <#upload-element>`_. An upload's ``include``/``exclude`` filters do not apply to it.
 
@@ -197,7 +197,7 @@ Attributes
         * be created as a new file (and logging should fail if file exists) -> use "create_new"
         * truncate any existing file or create a new file -> use "truncate"
 * **encrypt** *(optional=yes, default=yes)*
-        When a `recipient <#recipient-element>`_ is configured, the outline is written encrypted for it, at the configured name with a ``.p7b`` suffix, and nothing is written to the clear text name (see `Encrypted output files`_). Set it to "no" to keep the json in clear text.
+        When a `recipient <#recipient-element>`_ is configured, the outline is written compressed and encrypted for it like an archive, at the configured name with a ``.7z.p7b`` suffix, and nothing is written to the clear text name (see `Encrypted output files`_). Set it to "no" to keep the json in clear text.
 * **upload** *(optional=yes, default=yes)*
         Set it to "no" to keep the outline on the host: it is still written, and encrypted as ``encrypt`` says, but it is not sent to any `upload <#upload-element>`_. An upload's ``include``/``exclude`` filters do not apply to it.
 
@@ -244,7 +244,7 @@ Attributes
         * be created as a new file (and logging should fail if file exists) -> use "create_new"
         * truncate any existing file or create a new file -> use "truncate"
 * **encrypt** *(optional=yes, default=yes)*
-        When a `recipient <#recipient-element>`_ is configured, the outcome is written encrypted for it, at the configured name with a ``.p7b`` suffix, and nothing is written to the clear text name (see `Encrypted output files`_). Set it to "no" to keep the json in clear text.
+        When a `recipient <#recipient-element>`_ is configured, the outcome is written compressed and encrypted for it like an archive, at the configured name with a ``.7z.p7b`` suffix, and nothing is written to the clear text name (see `Encrypted output files`_). Set it to "no" to keep the json in clear text.
 * **upload** *(optional=yes, default=yes)*
         Set it to "no" to keep the outcome on the host: it is still written, and encrypted as ``encrypt`` says, but it is not sent to any `upload <#upload-element>`_. An upload's ``include``/``exclude`` filters do not apply to it.
 
@@ -293,14 +293,11 @@ Example
 Encrypted output files
 ----------------------
 
-As soon as a recipient is configured, the files a collection produces for itself are encrypted for it as well, not only the archives: the :doc:`outline <outline>`, the :doc:`outcome <outcome>`, the log file and the console output file. Each is written at its configured name with a ``.p7b`` suffix, and **nothing is written to the clear text name**, so tooling that reads ``outcome.json`` after a collection has to decrypt it or opt out with the ``encrypt`` attribute of the element concerned.
+As soon as a recipient is configured, the files a collection produces for itself are encrypted for it as well, not only the archives: the :doc:`outline <outline>`, the :doc:`outcome <outcome>`, the log file and the console output file. Each is protected **exactly like an archive**: compressed into a ``7z`` archive holding the file under its configured name, then encrypted, and written at its configured name with a ``.7z.p7b`` suffix. **Nothing is left under the clear text name**, so tooling that reads ``outcome.json`` after a collection has to decrypt and extract it, or opt out with the ``encrypt`` attribute of the element concerned. A file written in clear text, without a recipient or with ``encrypt="no"``, is not compressed.
 
 These four files are encrypted for **every** configured recipient, whatever its ``archive`` attribute says, and recipients declared in the :ref:`local configuration <orc_local_config-recipient-element>` count as well. The ``archive`` attribute only selects which archives a recipient receives: a recipient declared with ``archive="Hives"`` cannot open the other archives, but it can read the outline, the outcome, the log and the console output of the whole collection.
 
-Two cases leave one of these files in clear text even with a recipient:
-
-* an **empty** log or console output file is left as it is, under its clear text name: a CMS envelope with no content cannot be decrypted, and there is nothing to hide;
-* if the log or the console output **cannot be encrypted**, the error is logged and the clear text file is kept, and uploaded unless its element sets ``upload="no"``, so that the log still reaches the analyst.
+One case leaves a file in clear text even with a recipient: if the log or the console output **cannot be encrypted**, the error is logged and the clear text file is kept, and uploaded unless its element sets ``upload="no"``, so that the log still reaches the analyst.
 
 .. _wolf_config-decrypting-files:
 
@@ -309,11 +306,12 @@ Two cases leave one of these files in clear text even with a recipient:
 Decrypting a collection
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Encrypted files are decrypted with `orc-decrypt <https://github.com/DFIR-ORC/orc-decrypt>`_ and the private key of a configured recipient. Point it at the directory where the collection was retrieved: it decrypts every ``.p7b`` file found there and in its subdirectories into the output directory, where each file keeps its name without the ``.p7b`` suffix.
+Encrypted files are decrypted with `orc-decrypt <https://github.com/DFIR-ORC/orc-decrypt>`_ and the private key of a configured recipient. Point it at the directory where the collection was retrieved: it decrypts every ``.p7b`` file found there and in its subdirectories into the output directory, where each file keeps its name without the ``.p7b`` suffix. Every decrypted file is a ``7z`` archive, extracted with 7-Zip: ``outcome.json.7z`` holds ``outcome.json``, just as ``Hives.7z`` holds the collected hives.
 
 .. code:: shell
 
   orc-decrypt -k recipient.key --output-dir ./decrypted ./collection
+  7z x ./decrypted/outcome.json.7z
 
 A recipient only opens what was encrypted for it: the archives its ``archive`` attribute matches, and the outline, outcome, log and console output, which are encrypted for every recipient. Read the summary line ``Finished processing N archives ... X failed, Y succeeded``: a file that could not be decrypted is reported there and in the log, but it does not change the exit code of ``orc-decrypt``.
 
@@ -351,7 +349,7 @@ Whether each of these files is encrypted and whether it is uploaded are two sepa
     <output>console.log</output>
   </console>
 
-The host keeps ``outline.json.p7b``, ``outcome.json``, ``wolf.log.p7b``, ``console.log`` and the archive; the upload destination receives only ``outcome.json``, ``console.log`` and the archive.
+The host keeps ``outline.json.7z.p7b``, ``outcome.json``, ``wolf.log.7z.p7b``, ``console.log`` and the archive; the upload destination receives only ``outcome.json``, ``console.log`` and the archive.
 
 `Back to Root <#anchor-root>`_
 
