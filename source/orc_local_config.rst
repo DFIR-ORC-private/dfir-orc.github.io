@@ -190,6 +190,8 @@ The following attributes apply to this method only.
         Comma separated list of TLS versions ("tls1.0" to "tls1.3"), acting as a **floor**: the named version and every higher one the operating system supports are enabled. A version may carry an OS target between brackets - "[xp]" or "[seven]" - which replaces the baseline on that system only, since those releases cannot negotiate the newer versions. The value "os-default" (or "none") leaves the system policy untouched.
 
         The default therefore requires TLS 1.3 everywhere except on Windows XP/2003, where it requires TLS 1.2. A server that cannot reach the floor fails the handshake rather than being silently accepted; the log then names the versions this client required.
+
+        An OS target must be a single bracketed tag closing its entry, such as ``tls1.2[xp]``. An entry with a malformed tag - ``tls1.2[xp`` missing its bracket, ``tls1.3[seven]x`` followed by more text, or ``tls1.2[xp][seven]`` with two tags - has no reliable meaning, so the configuration is refused when it is embedded, and the upload is refused when such a value reaches a collection through a local configuration.
 * **server_cert_pin** *(optional=yes, default=none)*
         One or more X.509 certificates, as PEM or base64, separated by commas or semicolons. The server is accepted only if the public key (SPKI) of the certificate it presents matches one of them. This is the secure way to use a self-signed server: it is independent of the machine's trust store and survives certificate renewal with the same key, and it needs no ``insecure``. Several values allow key rotation.
 * **insecure** *(optional=yes, default=false)*
