@@ -72,6 +72,8 @@ Attributes
         When a `recipient <#recipient-element>`_ is configured, the log file is encrypted for it and gains a ``.p7b`` suffix (see `Encrypted output files`_). Set it to "no" to keep the log in clear text.
 
         The log is encrypted **once closed**, not as it is written: a CMS envelope has to be complete to be decrypted, so encrypting on the fly would make the log of an interrupted collection unreadable. It therefore stays readable on the host while the collection runs, and the clear text file is removed once the encrypted one exists.
+* **upload** *(optional=yes, default=yes)*
+        Set it to "no" to keep the log file on the host: it is still written, and encrypted as ``encrypt`` says, but it is not sent to any `upload <#upload-element>`_. An upload's ``include``/``exclude`` filters do not apply to the log, so this attribute is the only way to keep it from leaving the machine.
 
 ``Console`` sink element
 -------------------------
@@ -135,6 +137,8 @@ Attributes
 
 * **encrypt** *(optional=yes, default=yes)*
         When a `recipient <#recipient-element>`_ is configured, the console output file is encrypted for it and gains a ``.p7b`` suffix (see `Encrypted output files`_). Set it to "no" to keep it in clear text. As with the log, it is encrypted once closed rather than as it is written.
+* **upload** *(optional=yes, default=yes)*
+        Set it to "no" to keep the console output file on the host: it is still written, and encrypted as ``encrypt`` says, but it is not sent to any `upload <#upload-element>`_. An upload's ``include``/``exclude`` filters do not apply to it.
 
 ``output`` Element
 -------------------
@@ -194,6 +198,8 @@ Attributes
         * truncate any existing file or create a new file -> use "truncate"
 * **encrypt** *(optional=yes, default=yes)*
         When a `recipient <#recipient-element>`_ is configured, the outline is written encrypted for it, at the configured name with a ``.p7b`` suffix, and nothing is written to the clear text name (see `Encrypted output files`_). Set it to "no" to keep the json in clear text.
+* **upload** *(optional=yes, default=yes)*
+        Set it to "no" to keep the outline on the host: it is still written, and encrypted as ``encrypt`` says, but it is not sent to any `upload <#upload-element>`_. An upload's ``include``/``exclude`` filters do not apply to it.
 
 Example
 --------
@@ -239,6 +245,8 @@ Attributes
         * truncate any existing file or create a new file -> use "truncate"
 * **encrypt** *(optional=yes, default=yes)*
         When a `recipient <#recipient-element>`_ is configured, the outcome is written encrypted for it, at the configured name with a ``.p7b`` suffix, and nothing is written to the clear text name (see `Encrypted output files`_). Set it to "no" to keep the json in clear text.
+* **upload** *(optional=yes, default=yes)*
+        Set it to "no" to keep the outcome on the host: it is still written, and encrypted as ``encrypt`` says, but it is not sent to any `upload <#upload-element>`_. An upload's ``include``/``exclude`` filters do not apply to it.
 
 Example
 --------
@@ -291,6 +299,29 @@ Every one of these files, archives included, is a CMS enveloped-data blob, opene
 
 ``-inform DER`` is required: the file is binary CMS, not PEM. ``-recip`` names the certificate matching ``-inkey``, which is the one declared in the ``recipient`` element.
 
+Whether each of these files is encrypted and whether it is uploaded are two separate choices, made on its own element with ``encrypt`` and ``upload``. In this example the outline and the log are encrypted but stay on the host, while the outcome and the console output are uploaded in clear text next to the encrypted archive:
+
+.. code:: xml
+
+  <recipient name="analyst" archive="*">
+    -----BEGIN CERTIFICATE-----
+      ... value ...
+    -----END CERTIFICATE-----
+  </recipient>
+
+  <outline disposition="truncate" upload="no">outline.json</outline>
+  <outcome disposition="truncate" encrypt="no">outcome.json</outcome>
+
+  <log upload="no">
+    <file level="debug"><output disposition="truncate">wolf.log</output></file>
+  </log>
+
+  <console encrypt="no">
+    <output>console.log</output>
+  </console>
+
+The host keeps ``outline.json.p7b``, ``outcome.json``, ``wolf.log.p7b``, ``console.log`` and the archive; the upload destination receives only ``outcome.json``, ``console.log`` and the archive.
+
 `Back to Root <#anchor-root>`_
 
 .. _wolf_config-upload-element:
@@ -337,7 +368,7 @@ Attributes
 * **exclude** *(optional=yes, default=none)*
         Specifies a comma (or semicolon) separated list of patterns, matching the file name of archives, that determine whether an output archive should not be uploaded. When excluded, an output archive is left intact in the output directory (i.e. regardless of the ``operation`` attribute). The ``exclude`` attribute takes precedence over the ``include`` attribute, meaning an archive whose name matches both ``include`` and ``exclude`` patterns will be excluded.
 
-Both filters select **collected data**, that is the archives. The files the collection produces about itself - the log, the console output, the outline and the outcome - are uploaded whatever the filters say.
+Both filters select **collected data**, that is the archives. The files the collection produces about itself - the log, the console output, the outline and the outcome - are uploaded whatever the filters say, unless their own element sets ``upload="no"``.
 
 Several ``upload`` elements may be declared. They are tried in order until one succeeds, and each is used with its own ``operation`` and its own ``include``/``exclude``.
 
