@@ -215,7 +215,7 @@ This option overrides the attribute ``command_timeout`` of the :ref:`archive ele
 ``/tee_cleartext`` Option
 -------------------------
 
-This option is for **testing/debugging purposes only**. It creates a clear text file alongside the encrypted file when DFIR ORC encrypts its output (cf :ref:`wolf recipient element <wolf_config-recipient-element>`).
+This option is for **testing/debugging purposes only**. It creates a clear text file alongside the encrypted file when DFIR ORC encrypts an archive (cf :ref:`wolf recipient element <wolf_config-recipient-element>`). It applies to archives only: the outline, outcome, log and console output are not duplicated in clear text.
 
 ``/no_journaling`` Option
 --------------------------

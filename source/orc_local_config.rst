@@ -360,6 +360,8 @@ Attributes
 * **archive** *(optional=no, default=Does not encrypt any archive)*
         Comma separated list of archive keyword specs to match against archive names. Specifies one or more archives encrypted in a CMS PKCS#7 message (cf http://tools.ietf.org/html/rfc2315 )
 
+        It selects archives only. Any recipient, whatever this attribute says, also receives the outline, outcome, log and console output of the collection, which are encrypted for every recipient: see :ref:`Encrypted output files <wolf_config-encrypted-output-files>`, which also explains how to decrypt them.
+
 Example
 -------
 

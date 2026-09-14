@@ -434,6 +434,8 @@ Edit the configuration file to add the command GetSamHive, and another recipient
          </recipient>
        </dfir-orc>
 
+    ``archive="Hives"`` only limits which archives Marc can open: the outline, outcome, log and console output are encrypted for every recipient, so Marc can read them too (see :ref:`Encrypted output files <wolf_config-encrypted-output-files>`, which also explains how to decrypt the ``.p7b`` files).
+
 
 .. _tuto-step-5:
 

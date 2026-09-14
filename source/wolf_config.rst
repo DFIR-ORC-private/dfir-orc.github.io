@@ -275,6 +275,8 @@ Attributes
 * **archive** *(optional=no, default=N/A)*
         Comma separated list of archive keyword specs to match against archive names. Specifies one or more archives encrypted in a CMS PKCS#7 message (cf http://tools.ietf.org/html/rfc2315).
 
+        It selects archives only: the outline, outcome, log and console output are encrypted for every recipient, whatever this attribute says (see `Encrypted output files`_).
+
 Example
 --------
 
@@ -286,10 +288,19 @@ Example
     -----END CERTIFICATE-----
   </recipient>
 
+.. _wolf_config-encrypted-output-files:
+
 Encrypted output files
 ----------------------
 
 As soon as a recipient is configured, the files a collection produces for itself are encrypted for it as well, not only the archives: the :doc:`outline <outline>`, the :doc:`outcome <outcome>`, the log file and the console output file. Each is written at its configured name with a ``.p7b`` suffix, and **nothing is written to the clear text name**, so tooling that reads ``outcome.json`` after a collection has to decrypt it or opt out with the ``encrypt`` attribute of the element concerned.
+
+These four files are encrypted for **every** configured recipient, whatever its ``archive`` attribute says, and recipients declared in the :ref:`local configuration <orc_local_config-recipient-element>` count as well. The ``archive`` attribute only selects which archives a recipient receives: a recipient declared with ``archive="Hives"`` cannot open the other archives, but it can read the outline, the outcome, the log and the console output of the whole collection.
+
+Two cases leave one of these files in clear text even with a recipient:
+
+* an **empty** log or console output file is left as it is, under its clear text name: a CMS envelope with no content cannot be decrypted, and there is nothing to hide;
+* if the log or the console output **cannot be encrypted**, the error is logged and the clear text file is kept, and uploaded unless its element sets ``upload="no"``, so that the log still reaches the analyst.
 
 Every one of these files, archives included, is a CMS enveloped-data blob, opened with the private key of any configured recipient:
 
