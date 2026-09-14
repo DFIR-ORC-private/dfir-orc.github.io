@@ -189,6 +189,8 @@ The following attributes apply to this method only.
 * **https_security** *(optional=yes, default="tls1.3, tls1.2[xp]")*
         Comma separated list of TLS versions ("tls1.0" to "tls1.3"), acting as a **floor**: the named version and every higher one the operating system supports are enabled. A version may carry an OS target between brackets - "[xp]" or "[seven]" - which replaces the baseline on that system only, since those releases cannot negotiate the newer versions. The value "os-default" (or "none") leaves the system policy untouched.
 
+        Because a system policy may still negotiate below TLS 1.2 - Windows 7 and 8 enable only SSL 3.0 and TLS 1.0 by default - "os-default" is checked on every connection: once the handshake is done and before the request is sent, the protocol actually negotiated is read, and anything below TLS 1.2 is refused, as is a system that cannot report it. Nothing is sent over a refused connection. ``insecure="true"`` accepts whatever the system negotiates.
+
         The default therefore requires TLS 1.3 everywhere except on Windows XP/2003, where it requires TLS 1.2. A server that cannot reach the floor fails the handshake rather than being silently accepted; the log then names the versions this client required.
 
         An OS target must be a single bracketed tag closing its entry, such as ``tls1.2[xp]``. An entry with a malformed tag - ``tls1.2[xp`` missing its bracket, ``tls1.3[seven]x`` followed by more text, or ``tls1.2[xp][seven]`` with two tags - has no reliable meaning, so the configuration is refused when it is embedded, and the upload is refused when such a value reaches a collection through a local configuration.
