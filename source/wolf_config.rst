@@ -302,13 +302,33 @@ Two cases leave one of these files in clear text even with a recipient:
 * an **empty** log or console output file is left as it is, under its clear text name: a CMS envelope with no content cannot be decrypted, and there is nothing to hide;
 * if the log or the console output **cannot be encrypted**, the error is logged and the clear text file is kept, and uploaded unless its element sets ``upload="no"``, so that the log still reaches the analyst.
 
-Every one of these files, archives included, is a CMS enveloped-data blob, opened with the private key of any configured recipient:
+.. _wolf_config-decrypting-files:
+
+.. _wolf_config-decrypting-archives:
+
+Decrypting a collection
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Encrypted files are decrypted with `orc-decrypt <https://github.com/DFIR-ORC/orc-decrypt>`_ and the private key of a configured recipient. Point it at the directory where the collection was retrieved: it decrypts every ``.p7b`` file found there and in its subdirectories into the output directory, where each file keeps its name without the ``.p7b`` suffix.
 
 .. code:: shell
 
-  openssl cms -decrypt -inform DER -in outcome.json.p7b -inkey recipient.key -recip recipient.crt -out outcome.json
+  orc-decrypt -k recipient.key --output-dir ./decrypted ./collection
 
-``-inform DER`` is required: the file is binary CMS, not PEM. ``-recip`` names the certificate matching ``-inkey``, which is the one declared in the ``recipient`` element.
+A recipient only opens what was encrypted for it: the archives its ``archive`` attribute matches, and the outline, outcome, log and console output, which are encrypted for every recipient. Read the summary line ``Finished processing N archives ... X failed, Y succeeded``: a file that could not be decrypted is reported there and in the log, but it does not change the exit code of ``orc-decrypt``.
+
+``orc-decrypt`` relies on ``unstream``, built from the same repository (see its README). If ``unstream`` is not in the ``PATH``, give its location with ``--unstream-path``.
+
+``-k`` expects a PEM private key without password protection. When the recipient's key is held in a ``.pfx``/``.p12`` file, for instance exported from the Windows certificate store, extract it first:
+
+.. code:: shell
+
+  openssl pkcs12 -in recipient.pfx -nocerts -nodes -out recipient.key
+
+If OpenSSL 3 reports an unsupported algorithm while reading an older ``.pfx``, add ``-legacy``. ``recipient.key`` is then an unprotected private key: keep it on the analysis workstation only.
+
+Encrypting and uploading independently
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Whether each of these files is encrypted and whether it is uploaded are two separate choices, made on its own element with ``encrypt`` and ``upload``. In this example the outline and the log are encrypted but stay on the host, while the outcome and the console output are uploaded in clear text next to the encrypted archive:
 

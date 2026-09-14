@@ -217,10 +217,12 @@ This option overrides the attribute ``command_timeout`` of the :ref:`archive ele
 
 This option is for **testing/debugging purposes only**. It creates a clear text file alongside the encrypted file when DFIR ORC encrypts an archive (cf :ref:`wolf recipient element <wolf_config-recipient-element>`). It applies to archives only: the outline, outcome, log and console output are not duplicated in clear text.
 
+.. _cli_options-no-journaling:
+
 ``/no_journaling`` Option
 --------------------------
 
-This option disables the journal format inside PKCS#7 CMS messages (for encrypted archives), thus directly creating the enveloped archive inside the CMS message (at the expense of a temporary clear text file created on disk).
+This option disables the journal format inside PKCS#7 CMS messages (for encrypted archives), thus directly creating the enveloped archive inside the CMS message (at the expense of a temporary clear text file created on disk). ``orc-decrypt`` expects the journal, so it does not decrypt an archive produced with this option (see :ref:`Decrypting a collection <wolf_config-decrypting-archives>`).
 
 ``/WERDontShowUI`` Option
 -------------------------
