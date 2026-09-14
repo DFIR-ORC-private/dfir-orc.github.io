@@ -262,10 +262,10 @@ The ``path``, ``http_query``, ``body`` and ``offset`` attributes of a `rest <#re
     {upload.filename}, name of the file being uploaded
     {upload.filename_base64}, the same name, base64 encoded
     {upload.local_path}, full local path of the file being uploaded
-    {upload.range_start}, offset of the chunk being sent
-    {upload.range_end}, offset of its last byte (start + length - 1)
-    {upload.range_length}, length of the chunk being sent
-    {upload.total_size}, total size of the file being sent
+    {upload.range_start}, "offset of the chunk being sent; 0 in a step without ``body``"
+    {upload.range_end}, "offset of its last byte (start + length - 1); 0 in a step without ``body``"
+    {upload.range_length}, "length of the chunk being sent; 0 in a step without ``body``"
+    {upload.total_size}, "size of the file the step's ``body`` names; in a step without ``body``, and within ``body`` itself, size of the file being uploaded"
     {upload.random:<charset>:<length>}, "a fresh random string, drawn once per file; charset is hex, num, alpha or alnum and length is 1 to 64"
 
 Values captured from a server response (see the ``response`` element below) are substituted under the name the configuration gives them, which may not start with ``upload.``. A captured value is never re-scanned for placeholders, so a server cannot inject one.
@@ -319,7 +319,7 @@ Attributes
 * **http_query** *(optional=yes, default=none)*
         Query string appended to the path, as a template, e.g. ``?start={upload.range_start}``.
 * **body** *(optional=yes, default=no body)*
-        The file to send as the request body. This is the step that uploads; use ``{upload.local_path}`` for the file being collected. A step without ``body`` sends no content.
+        The file to send as the request body. This is the step that uploads; use ``{upload.local_path}`` for the file being collected. A step without ``body`` sends no content. Any file may be named: the transfer is sized from the file actually opened, so ``Content-Length``, the chunks and the size placeholders of that step describe it rather than the collected file, and ``offset`` is clamped to its size.
 * **offset** *(optional=yes, default=0)*
         Offset the body starts at, as a template, e.g. ``{remote_size}`` fed by a probe. The value is clamped to the size of the body.
 * **chunk_size** *(optional=yes, default=the whole file in one request)*
