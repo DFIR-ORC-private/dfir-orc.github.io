@@ -112,6 +112,23 @@ Embedding is the last moment at which a whole configuration is in front of an op
 
 Each refusal is reported with the configuration it came from and what to change. The other embedded files are not affected: only the WolfLauncher configuration is held to this.
 
+.. _toolembed-advisory-warnings:
+
+Advisory warnings
+-----------------
+
+Beside those refusals, ToolEmbed reports two things it will not stop the build for. Both are legitimate deployments; the point is that they be a decision rather than an oversight.
+
+**Output that leaves the host in clear text.** ToolEmbed names, for each embedded WolfLauncher configuration, every artifact that is uploaded unencrypted: each ``archive`` no `recipient <wolf_config.html#recipient-element>`_ glob covers, and whichever of ``log``, ``console``, ``outline`` and ``outcome`` is both unencrypted and still uploaded (see :ref:`Encrypted output files <wolf_config-encrypted-output-files>`).
+
+The reasoning is that a collector runs on the host under investigation, which is the host one suspects, so the configuration embedded in it has to be assumed lost. Once it is, a credential sitting beside the destination protects nothing - whoever holds the binary holds the key - and ToolEmbed cannot see whether that credential is allowed to read back what it wrote. CMS enveloping is then the only thing in the configuration still protecting the collection.
+
+The warning therefore does **not** depend on the ``authscheme``: making an anonymous destination its trigger would imply that an authenticated one is safe, which is the belief it exists to correct. The endpoint does appear, as aggravating detail on its own line: a destination presenting no credential accepts writes from anyone who reaches it, and ``insecure="true"`` - or plain HTTP with BITS - exposes the same clear text in flight as well as at rest.
+
+It is silent when nothing leaves: no ``upload`` element at all, ``upload="no"`` keeping a file on the host, or a ``recipient`` covering everything that goes. An artifact the configuration does not declare is not produced, so it is not reported either.
+
+**Upload entries that do not filter alike.** When a configuration declares several `upload <orc_local_config.html#upload-element>`_ entries and they do not carry the same ``include``/``exclude`` patterns, ToolEmbed says so and names the entries. Differing filters are legal and sometimes intended, but each destination applies its own, so a file one entry drops is still offered to the next: keeping a file on the machine takes excluding it from every entry.
+
 .. _toolembed-toolembed-element:
 
 ``toolembed`` Element
