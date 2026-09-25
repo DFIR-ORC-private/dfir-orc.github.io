@@ -146,6 +146,7 @@ Attributes
         * NTLM
         * Kerberos
         * Negotiate
+        * AWSv4 (``method="rest"`` only, see `AWS SigV4`_)
 * **operation** *(optional=yes, default=copy)*
         "copy" or "move" the archives to the upload server. With "move" the local file is deleted only once data has actually been sent: an upload that transmits nothing - a `rest element <#rest-element>`_ dialog with no body step, or a resume ``offset`` that already covers the whole file - is reported as a failed upload and the archive is kept. An empty file is not that case, it is uploaded as one zero-length request.
 * **mode** *(optional=yes, default=sync)*
@@ -180,7 +181,15 @@ Example
 REST upload
 -----------
 
-With ``method="rest"`` the archives are uploaded over HTTP or HTTPS, and the requests to issue are described by one or more `rest <#rest-element>`_ child elements. This covers a plain ``PUT`` as well as the resumable and multi-step dialogs of servers such as WebDAV or tus.io.
+With ``method="rest"`` the archives are uploaded over HTTP or HTTPS, and the requests to issue are described by one or more `rest <#rest-element>`_ child elements. This covers a plain ``PUT`` as well as the resumable and multi-step dialogs of servers such as WebDAV, Nextcloud or S3 (see `REST server dialogs`_).
+
+.. warning::
+
+    **The REST upload method is new, and has only been lightly tested.** What it has been through is a unit test suite (350 tests, no failure) and a live scenario matrix on a laboratory bench: a reference Python sink, Nextcloud 35, MinIO, RustFS, SeaweedFS, and a Squid proxy, on Windows 11.
+
+    That is the whole of it. It has not been through a production deployment, nor against the variety of authenticating proxies, TLS-inspecting middleboxes and object stores found in the field. Several parts are knowingly untested: resuming an interrupted upload against a real server, the WebDAV and Nextcloud chunked dialogs above a few kilobytes, and the method as a whole on the XP-capable target - where `AWS SigV4`_ is in any case unavailable.
+
+    Before relying on it for a real engagement, run a complete collection against your own endpoint and compare the archive that arrives with the one produced on the host, byte for byte.
 
 The following attributes apply to this method only.
 
@@ -202,6 +211,64 @@ The following attributes apply to this method only.
         Authorises transports that are insecure by construction: plain HTTP, TLS below 1.2, **and** disabling certificate validation altogether. Without it, a plain-HTTP REST upload is refused when the configuration is embedded. Prefer ``server_cert_pin`` for a self-signed server.
 * **follow_redirects** *(optional=yes, default=false)*
         Lets WinHTTP follow a 3xx redirection. Off by default: a redirection re-sends the preset credentials to the target it names, which only has to hold a certificate the machine trusts. With ``server_cert_pin``, the target must present a pinned key before anything is sent to it. An HTTPS to HTTP downgrade is refused even when this is enabled.
+
+**Authentication**
+
+REST does standard, header-based HTTP authentication only. The scheme is named by the ``authscheme`` attribute of `upload <#upload-element>`_ and is never learned from the server's challenge:
+
+* **Basic** - ``authscheme="Basic"`` with ``user``/``password``. The agent builds the ``Authorization: Basic`` header itself and sends it preemptively on every request, with no 401 round trip. ``Basic`` without a ``user`` is refused.
+* **Bearer or any other token** - put the credential in a literal header, ``<header>Authorization: Bearer ...</header>``.
+* **NTLM, Kerberos, Negotiate** - with an explicit ``user``/``password``. These are challenge-response, so the agent presets the credential and completes the handshake on a single resend after the server's ``401``. WinHTTP auto-logon is forced to HIGH, so the identity DFIR ORC runs under is never presented: a collection running as SYSTEM does not offer the machine account. An integrated scheme without a credential is refused.
+* **AWSv4** - see `AWS SigV4`_ below.
+
+**A refused authentication stops that destination.** When a request receives a ``401`` or a ``407`` that its step does not list in ``accept_status``, the error names who challenged (server or proxy) and the schemes offered, for example ``HTTP 407 from the proxy, offering Basic, NTLM``; only the scheme names are logged, never a header value or a credential. That ``upload`` element then sends **nothing more**, for any file or ``repeat="Once"`` check left to process: every further request would present the same credentials again, and each refusal can count as a failed logon until the directory locks the account out. The files it did not upload are offered to the next `upload <#upload-element>`_ entry.
+
+Prefer a scoped, revocable, upload-only credential: whatever is embedded in the collector is readable by whoever obtains the collector.
+
+.. _upload-rest-awsv4:
+
+AWS SigV4
+~~~~~~~~~
+
+``authscheme="AWSv4"`` signs every request of the dialog with an AWS Signature Version 4 header, which is what an S3 endpoint expects (AWS S3 itself, and S3-compatible servers such as MinIO, RustFS or SeaweedFS). The signature is an HMAC-SHA256 recomputed for each request over its method, path, query, headers and timestamp, so - unlike a bearer token - it cannot be written as a constant ``header``.
+
+..  csv-table::
+    :header: Attribute, Required, Meaning
+    :align: left
+    :widths: auto
+
+    ``access_key``, yes, the access key id
+    ``secret_key``, yes, the matching secret
+    ``session_token``, no, "an STS session token, when the credential is temporary"
+    ``aws_region``, "yes, no default", the region folded into the signing key
+    ``aws_service``, "no (default ``s3``)", the service name folded into the signing key
+    ``aws_clock``, "no (default ``local``)", "``local`` logs a clock-skew rejection and fails; ``server`` permits exactly one re-signed retry using the rejecting response's ``Date`` header"
+
+``aws_region`` has no implicit default, not even ``us-east-1``: a forgotten attribute would otherwise turn into a ``403`` naming nothing, which is the hardest SigV4 failure to diagnose blind.
+
+The following are refused when the configuration is embedded, rather than producing a request whose meaning depends on header ordering, or an upload that runs unsigned while the configuration says otherwise:
+
+* ``authscheme="AWSv4"`` together with a literal ``Authorization`` header, or with any header the signer sets itself: ``Host``, ``x-amz-date``, ``x-amz-content-sha256``, ``x-amz-security-token``;
+* ``access_key``, ``secret_key`` or ``session_token`` under any other ``authscheme``;
+* a missing ``access_key``, ``secret_key`` or ``aws_region``, or an empty ``aws_service``.
+
+Points worth knowing before writing such a configuration:
+
+* **The credentials are not environment-expanded.** Like ``user``/``password``/``proxy_user``/``proxy_password``, ``access_key``, ``secret_key`` and ``session_token`` are taken verbatim: ``%MY_KEY%`` arrives as that literal string and the signature computed from it is simply wrong. ``aws_region`` and ``aws_service`` are expanded, being neither addresses nor secrets. To keep a standing secret out of the binary, use a short-lived STS credential and its ``session_token``: it expires on its own instead of waiting to be rotated.
+* **Paths are written literally.** The signature and the request must be computed from the same bytes, so DFIR ORC percent-encodes the resolved ``path`` once and signs exactly what it sends. Write a space as a space and an accented letter as itself, never pre-encoded: a ``%20`` in the configuration would be encoded again into ``%2520``.
+* **A redirect is an error.** A signature binds the host, the path and the timestamp it was computed for, and there is no way to re-sign a request in flight, so redirects are never followed under this scheme whatever ``follow_redirects`` says. A ``3xx`` is simply an unacceptable status and ends that ``upload``.
+* **The body is signed as** ``UNSIGNED-PAYLOAD``, so a multi-gigabyte upload is not read a second time to be signed.
+* **Unavailable on the XP target.** The HMAC-SHA256 primitive is backed by CNG (``bcrypt.dll``), resolved lazily so that a binary built for the ``v141_xp`` toolset still loads on Windows XP and 2003. It just cannot sign there, and ``authscheme="AWSv4"`` fails closed with a logged error rather than sending an unsigned request.
+
+.. code:: xml
+
+    <upload job="DFIR-ORC" method="rest"
+      server="https://s3.mycorp.example"
+      operation="move"
+      authscheme="AWSv4"
+      access_key="AKIA..." secret_key="..." aws_region="eu-west-3">
+        <rest http_method="PUT" path="/orc-bucket/incoming/{upload.filename}" body="{upload.local_path}"/>
+    </upload>
 
 **Headers sent with every request**
 
@@ -249,6 +316,15 @@ A ``header`` declared inside a `rest <#rest-element>`_ element applies to that r
         They require the destination to be named: ``proxy="system"`` has to be written out loud to send them to the machine-wide proxy.
 * **proxy_authscheme** *(optional=yes, default=Anonymous)*
         "Basic", "NTLM" or "Negotiate". The scheme is never learned from the proxy's ``407``. **NTLM and Negotiate need a domain-qualified user** (``DOMAIN\user`` or ``user@domain.fqdn``): WinHTTP sends an empty domain for a bare name, which a real proxy rejects with a repeating ``407``.
+
+**Transport behaviour**
+
+A few properties of the requests are not configurable, and are worth knowing when reading a capture or a server log:
+
+* Every request carries ``Cache-Control: no-cache``, so an intermediate cache cannot answer a resume probe from a stale copy.
+* The timeouts are longer than the WinHTTP defaults: 60 s to resolve the name and 60 s to connect, 5 minutes per write, and 10 minutes per read and for the response headers - so a server still storing a large body is not dropped after 30 s, and name resolution does not wait forever.
+* A response body nobody captures is read and discarded, up to 1 MiB, so that the connection is reused rather than reopened. A larger one is left unread and its connection is closed.
+* A single request cannot carry more than 4 GB, which is a WinHTTP limit. Beyond that the upload is refused rather than truncated, and ``chunk_size`` is the way past it.
 
 **Placeholders**
 
@@ -324,6 +400,8 @@ Attributes
         Offset the body starts at, as a template, e.g. ``{remote_size}`` fed by a probe. The value is clamped to the size of the body.
 * **chunk_size** *(optional=yes, default=the whole file in one request)*
         Splits the body into requests of that many bytes. Required beyond 4 GB, which a single request cannot carry.
+
+        A chunked step **must name the offset of each chunk**, through ``{upload.range_start}`` (or ``range_end``/``range_length``) in its ``path``, its ``http_query`` or one of its headers. A configuration that does not is refused when it is embedded: every chunk would otherwise be addressed identically, the server could not tell them apart, and what would remain in place of the archive is its last fragment - with every request answering 2xx, the run reporting success, and ``operation="move"`` deleting the local copy.
 * **accept_status** *(optional=yes, default=any 2xx)*
         Additional HTTP status codes to treat as success, comma separated, e.g. ``404`` on a probe that legitimately finds nothing.
 
@@ -343,8 +421,39 @@ Captures a value from the server's answer to this step, for later steps to use.
         Name of the response header to capture.
 * **dav_property** *(optional=yes, default=none)*
         Name of a WebDAV property to capture from a PROPFIND answer, e.g. ``getcontentlength``.
+
+        **Disabled in the standard build.** Capturing a property means parsing XML the server sends, which is attack surface for a gain a response header usually provides just as well, so it is compiled out (``ORC_REST_ENABLE_DAV_PROPERTY=0``) and a configuration using it is refused when it is embedded. Rebuild with ``-DORC_REST_ENABLE_DAV_PROPERTY=1`` if a server leaves no other way.
 * **default** *(optional=yes, default=empty)*
         Value used when the server does not return the header or property.
+
+`Back to Root <#anchor-root>`_
+
+.. _rest-dialogs:
+
+REST server dialogs
+===================
+
+The `rest <#rest-element>`_ elements describe requests, not a protocol: nothing in DFIR ORC knows what a WebDAV collection or an S3 bucket is. The dialogs below are the ones that have actually been written and exercised against real servers, and are the sensible starting points. Each one is a shape of ``rest`` steps, so a server not named here is a matter of writing its own sequence rather than of adding support.
+
+..  csv-table::
+    :header: Dialog, Steps, Where it has been exercised
+    :align: left
+    :widths: auto
+
+    "Single ``PUT``", one body step, "the reference sink, Nextcloud 35, MinIO, RustFS, SeaweedFS"
+    "Chunked", "one body step with ``chunk_size``, the offset in the path, the query or a ``Content-Range`` header", the reference sink
+    "Resume", "a ``HEAD`` probe capturing ``content-length`` into ``{remote_size}``, then a body step with ``offset=""{remote_size}""``", the reference sink
+    "WebDAV", "``MKCOL`` (with ``accept_status=""405""``), the body step under a temporary name, then ``MOVE`` to the final name", "the reference sink, Nextcloud 35"
+    "Nextcloud chunked upload v2", "``MKCOL`` the collection, ``MKCOL`` an upload directory named by ``{upload.random:...}``, one chunk ``PUT`` per ``{upload.range_start}``, then ``MOVE``", Nextcloud 35
+    "S3", "one ``PUT`` per object, anonymous or signed (`AWS SigV4`_)", "MinIO, RustFS, SeaweedFS"
+
+Three consequences of this being a request engine rather than a protocol client are worth stating plainly:
+
+* **A PUT replaces, it does not append.** The resume shape only means something against a server that appends, such as the reference sink. Against Nextcloud or S3, resuming would upload the tail of the file as the whole new object. There, an interrupted upload is redone from the start.
+* **Chunk ordering is the server's.** A chunked dialog names each chunk by its byte offset, because that is the only per-chunk value a path template can carry. Reassembling them correctly requires the server to order those names numerically: past the tenth chunk, a text sort puts ``10485760`` before ``2097152``. Nextcloud 35 was measured to sort them numerically; that is a behaviour, not a documented contract, so it is worth re-checking against the version actually deployed.
+* **S3 has no chunking here.** Splitting a large object on S3 means multipart upload, whose ``UploadId`` arrives in an XML body and whose completion request is an XML document built from every part's ``ETag`` - neither of which a ``rest`` step can produce. An object therefore goes in a single ``PUT``, which caps it at the 5 GiB S3 allows for one, and ``chunk_size`` cannot be used to go past it.
+
+More extensive notes, including the setup scripts for each of those servers and what was measured against them, live with the test configurations in ``tests/RestAgent/README.md`` of the source tree.
 
 `Back to Root <#anchor-root>`_
 
