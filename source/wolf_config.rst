@@ -371,7 +371,7 @@ Attributes
 * **method** *(optional=no, default=N/A)*
         Describes the method to upload the files: "filecopy" (uses SMB), "BITS", or "rest" (HTTP/HTTPS).
 
-        The "rest" method takes its own attributes - the ``rest`` dialog, TLS and pinning, proxy - which are documented once, with the :doc:`local configuration file <orc_local_config>`.
+        The "rest" method takes its own attributes - the ``rest`` dialog, authentication including `AWS SigV4 <orc_local_config.html#aws-sigv4>`_, TLS and pinning, proxy - which are documented once, with the :doc:`local configuration file <orc_local_config>`. It is **new and has only been lightly tested**: see the warning there before deploying it.
 * **server** *(optional=no, default=N/A)*
         Specifies the server name (e.g. `file://servername` or `http://servername`, or `https://servername`) when using BITS or SMB. For "rest" the value names a bare host, optionally with a port; a path is refused.
 * **path** *(optional=no, default= / or \\ depending on the method)*
@@ -388,6 +388,7 @@ Attributes
         * NTLM
         * Kerberos
         * Negotiate
+        * AWSv4 (``method="rest"`` only, for an S3 endpoint; see `AWS SigV4 <orc_local_config.html#aws-sigv4>`_)
 * **operation** *(optional=yes, default=copy)*
         "copy" or "move" the archives to the upload server.
 * **mode** *(optional=yes, default=sync)*
