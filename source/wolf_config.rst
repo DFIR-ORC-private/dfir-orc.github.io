@@ -125,6 +125,8 @@ Example
 `Back to Root <#anchor-root>`_
 
 
+.. _wolf_config-console-element:
+
 ``console`` Element
 ===================
 
@@ -298,6 +300,8 @@ As soon as a recipient is configured, the files a collection produces for itself
 These four files are encrypted for **every** configured recipient, whatever its ``archive`` attribute says, and recipients declared in the :ref:`local configuration <orc_local_config-recipient-element>` count as well. The ``archive`` attribute only selects which archives a recipient receives: a recipient declared with ``archive="Hives"`` cannot open the other archives, but it can read the outline, the outcome, the log and the console output of the whole collection.
 
 One case leaves a file in clear text even with a recipient: if the log or the console output **cannot be encrypted**, the error is logged and the clear text file is kept, and uploaded unless its element sets ``upload="no"``, so that the log still reaches the analyst.
+
+A :doc:`local configuration <orc_local_config>` can also keep any of these four in clear text, with the same ``encrypt`` attribute on its own ``log``, ``console``, ``outline`` and ``outcome`` elements: it is read after the embedded configuration and overrides it. This only ever works one way - a local configuration cannot encrypt a file the embedded one left in clear, and the run's log names each file it takes out of the envelope. See :ref:`the attributes of the local log element <orc_local_config-run-artifact-switches>`. The archives are not concerned: whether they are encrypted follows from the recipients, so a local configuration can only add one.
 
 .. _wolf_config-decrypting-files:
 

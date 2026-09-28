@@ -32,7 +32,10 @@ Its point is to be exhaustive from the point of view of existing usable elements
 |      <`key <#key-element>`_> *value*  <`/key <#key-element>`_>
 |      <`enable_key <#enable-key-and-disable-key-elements>`_> *value* <`/enable_key <#enable-key-and-disable-key-elements>`_>
 |      <`disable_key <#enable-key-and-disable-key-elements>`_> *value* <`/disable_key <#enable-key-and-disable-key-elements>`_>
-|      <`log <#log-element>`_ *attributes="..."> *value* <`/log <#log-element>`_>
+|      <`log <#log-element>`_ *attributes="..."*> *value* <`/log <#log-element>`_>
+|      <`console <#console-element>`_ *attributes="..."*> *value* <`/console <#console-element>`_>
+|      <`outline <#outline-element>`_ *attributes="..."*> *value* <`/outline <#outline-element>`_>
+|      <`outcome <#outcome-element>`_ *attributes="..."*> *value* <`/outcome <#outcome-element>`_>
 | <`/dfir-orc <#dfir-orc-element>`_>
 
 .. _orc_local_config-dfir-orc-element:
@@ -574,6 +577,36 @@ The log element can be used to create an optional log file of DFIR ORC execution
 
 The log message are passing through "sinks" like 'console' or 'file'. To configure log output a sink must be specified.
 
+.. _orc_local_config-run-artifact-switches:
+
+Attributes
+----------
+
+These two attributes are read on the `log <#log-element>`_, `console <#console-element>`_, `outline <#outline-element>`_ and `outcome <#outcome-element>`_ elements of a local configuration, and **override the embedded configuration**, which is read before it. They are described once here.
+
+* **encrypt** *(optional=yes, default=the embedded configuration's choice)*
+        Set it to "no" to keep this file in clear text, even though the collection has a `recipient <#recipient-element>`_ and the embedded configuration encrypts it. See :ref:`Encrypted output files <wolf_config-encrypted-output-files>` for what encrypting one of these files means.
+* **upload** *(optional=yes, default=the embedded configuration's choice)*
+        Set it to "no" to keep this file on the host: it is still written, and encrypted as ``encrypt`` says, but it is not sent to any `upload <#upload-element>`_.
+
+Both attributes only ever turn something **off**. ``encrypt="yes"`` in a local configuration cannot re-encrypt a file the embedded configuration left in clear text, and ``upload="yes"`` cannot send one it kept on the host: a local configuration lowers what the collection was built to do and never raises it. Only "no", "false" or "0" turns a switch off; any other value is read as yes and therefore changes nothing.
+
+To *add* encryption locally, declare a `recipient <#recipient-element>`_ instead: these four files are encrypted for every recipient, including one declared here.
+
+Each file that a local configuration takes out of the envelope the embedded configuration set up is named in the run's own log, at warning level (``Local configuration keeps the outcome in clear text``). A collection's own record leaving the host in clear text is a legitimate operator decision, but it should be visible as one, the way :doc:`ToolEmbed <ToolEmbed>` reports clear text output at embedding time.
+
+.. code:: xml
+
+    <dfir-orc>
+        <log encrypt="no"/>
+        <console encrypt="no"/>
+        <outline encrypt="no"/>
+        <outcome encrypt="no"/>
+    </dfir-orc>
+
+Sinks
+-----
+
 ``Console`` sink element, ``/log:console,...`` Option
 ------------------------------------------------------
 
@@ -688,5 +721,79 @@ Example
         /log:console,level=critical,backtrace=off \
         /log:file,level=debug,backtrace=error,output="dfir-orc.log" \
         /log:syslog,host=127.0.0.1,port=514 ...
+
+`Back to Root <#anchor-root>`_
+
+
+.. _orc_local_config-console-element:
+
+``console`` Element
+===================
+
+*optional=yes, default=N/A*, `parent element: dfir-orc <#dfir-orc-element>`_
+
+Overrides the console output file - the tee of what the collection printed - configured by the :ref:`console element <wolf_config-console-element>` of the embedded configuration.
+
+Attributes
+----------
+
+``encrypt`` and ``upload``, described under :ref:`the log element <orc_local_config-run-artifact-switches>`.
+
+Example
+-------
+
+.. code:: xml
+
+    <console encrypt="no">
+        <output>ORC_{SystemType}_{FullComputerName}_{TimeStamp}_console.txt</output>
+    </console>
+
+`Back to Root <#anchor-root>`_
+
+
+.. _orc_local_config-outline-element:
+
+``outline`` Element
+===================
+
+*optional=yes, default=N/A*, `parent element: dfir-orc <#dfir-orc-element>`_
+
+Overrides the :doc:`outline <outline>` file configured by the embedded configuration: where it is written, whether it is encrypted and whether it is uploaded. The inner text is the path, and supports the same patterns as an archive name; with no inner text the element carries only its attributes and the path configured at embedding time is kept.
+
+Attributes
+----------
+
+``encrypt`` and ``upload``, described under :ref:`the log element <orc_local_config-run-artifact-switches>`.
+
+Example
+-------
+
+.. code:: xml
+
+    <outline encrypt="no">outline.json</outline>
+
+`Back to Root <#anchor-root>`_
+
+
+.. _orc_local_config-outcome-element:
+
+``outcome`` Element
+===================
+
+*optional=yes, default=N/A*, `parent element: dfir-orc <#dfir-orc-element>`_
+
+Overrides the :doc:`outcome <outcome>` file configured by the embedded configuration, exactly as `outline <#outline-element>`_ does for the outline.
+
+Attributes
+----------
+
+``encrypt`` and ``upload``, described under :ref:`the log element <orc_local_config-run-artifact-switches>`.
+
+Example
+-------
+
+.. code:: xml
+
+    <outcome encrypt="no">outcome.json</outcome>
 
 `Back to Root <#anchor-root>`_
