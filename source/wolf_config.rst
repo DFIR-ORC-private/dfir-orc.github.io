@@ -382,6 +382,8 @@ Attributes
         * AWSv4 (``method="rest"`` only, for an S3 endpoint; see `AWS SigV4 <orc_local_config.html#aws-sigv4>`_)
 * **operation** *(optional=yes, default=copy)*
         "copy" or "move" the archives to the upload server.
+* **retry**, **retry_delay** *(optional=yes, default=0 and 30)*
+        Extra attempts at this entry before trying the next one, and seconds between attempts. See the `local configuration upload element <orc_local_config.html#upload-element>`_.
 * **mode** *(optional=yes, default=sync)*
         "sync" or "async": upload can be synchronous or asynchronous (asynchronous allows DFIR ORC to exit prior to BITS jobs completes). "async" is **not** supported for "filecopy" method.
 * **include** *(optional=yes, default=none)*
@@ -391,7 +393,7 @@ Attributes
 
 Both filters select **collected data**, that is the archives. The files the collection produces about itself - the log, the console output, the outline and the outcome - are uploaded whatever the filters say, unless their own element sets ``upload="no"``.
 
-Several ``upload`` elements may be declared. They are tried in order until one succeeds, and each is used with its own ``operation`` and its own ``include``/``exclude``.
+Several ``upload`` elements may be declared. They are tried in order until one succeeds, and each is used with its own ``operation`` and its own ``include``/``exclude``. Entries of a :doc:`local configuration <orc_local_config>` are added after these.
 
 Example
 -------

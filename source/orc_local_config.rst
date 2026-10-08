@@ -26,6 +26,7 @@ Its point is to be exhaustive from the point of view of existing usable elements
 |          <`rest <#rest-element>`_ *attributes="..."*>
 |              <`header <#header-child-element>`__> *value* </header>
 |              <`response <#response-child-element>`_ *attributes="..."* />
+|              <`form <#form-child-element>`_ *attributes="..."* />
 |          </`rest <#rest-element>`_>
 |      <`/upload <#upload-element>`_>
 |      <`recipient <#recipient-element>`_ *attributes="..."*> *value* <`/recipient <#recipient-element>`_>
@@ -152,6 +153,10 @@ Attributes
         * AWSv4 (``method="rest"`` only, see `AWS SigV4`_)
 * **operation** *(optional=yes, default=copy)*
         "copy" or "move" the archives to the upload server. With "move", the local file is deleted once it has been sent.
+* **retry** *(optional=yes, default=0)*
+        Number of extra attempts at this entry before trying the next one: ``retry="2"`` means three attempts. At most 10. Retries take place at the end of the collection. No effect with ``mode="async"``.
+* **retry_delay** *(optional=yes, default=30)*
+        Seconds between two attempts. At most 1800, and ``retry`` x ``retry_delay`` may not exceed 1800 seconds.
 * **mode** *(optional=yes, default=sync)*
         "sync" or "async": upload can be synchronous or asynchronous (asynchronous allows DFIR ORC to exit prior to BITS jobs completes). "async" is **not** supported for "filecopy" method.
 * **include** *(optional=yes, default=none)*
@@ -166,6 +171,10 @@ Attributes
 Several ``upload`` elements may be declared. They form a **fallback list**, tried in order until one succeeds, and each entry is used with its own ``operation`` and its own ``include``/``exclude``: a fallback that says ``operation="copy"`` keeps the local archive even when the first entry asked to move it, and one that excludes a file does not receive it.
 
 The filters are per destination, in both directions: a file the first entry excludes is still offered to a later entry that accepts it. ``exclude`` says "this destination does not take that archive", not "this archive stays on the machine" - to keep a file from leaving at all, it must be excluded from every entry.
+
+An entry that cannot be configured is skipped, as long as another entry remains usable.
+
+The ``upload`` entries of a local configuration are **added after** those of the embedded configuration, as further fallbacks. Before DFIR ORC 10.4.0, they replaced them.
 
 Example
 -------
@@ -372,6 +381,8 @@ Attributes
         Sends the file in chunks of that many bytes. Required beyond 4 GB. Each chunk must be identified by ``{upload.range_start}`` in the path, the query or a header.
 * **accept_status** *(optional=yes, default=any 2xx)*
         Additional HTTP status codes to treat as success, comma separated, e.g. ``404`` on a probe that legitimately finds nothing.
+* **session** *(optional=yes, default=once per file)*
+        ``session="once"`` runs the step only once, before the first file, instead of once per file: for a login. Cookies set by the server are kept for the following steps.
 
 ``header`` child element
 ------------------------
@@ -381,16 +392,52 @@ One header line, sent with this request only. Repeat the element for several hea
 ``response`` child element
 --------------------------
 
-Captures a value from the server's answer to this step, for later steps to use.
+Captures a value from the server's answer to this step, for later steps to use. Each ``response`` reads exactly one of ``header``, ``form_input``, ``attribute`` or ``dav_property``.
 
 * **name** *(optional=no, default=N/A)*
         Name of the captured value, written ``{name}`` in a later step. It cannot start with ``upload.``.
 * **header** *(optional=yes, default=none)*
         Name of the response header to capture.
+* **form_input** *(optional=yes, default=none)*
+        Name of an HTML ``<input>`` - typically a hidden token - whose value is read from the returned page.
+* **attribute** *(optional=yes, default=none)*
+        Name of an HTML attribute whose value is read from the returned page, e.g. ``data-requesttoken``.
+
+        If ``form_input`` or ``attribute`` finds nothing and no ``default`` is given, the upload stops.
 * **dav_property** *(optional=yes, default=none)*
         Name of a WebDAV property read from a PROPFIND answer, e.g. ``getcontentlength``. Not available in the standard build.
 * **default** *(optional=yes, default=empty)*
-        Value used when the server does not return the header or property.
+        Value used when the server does not return the header, property, input or attribute.
+
+.. _form-child-element:
+
+``form`` child element
+----------------------
+
+One field of a form sent as the request body, e.g. the password of a login form. Repeat the element for several fields.
+
+* **field** *(optional=no, default=N/A)*
+        Name of the field.
+* **value** *(optional=no, default=N/A)*
+        Value of the field. It may use a value captured by an earlier step, e.g. ``{rt}``.
+
+The step must use POST, PUT or PATCH, and cannot also carry ``body``.
+
+.. code:: xml
+
+    <upload method="rest" server="https://share.mycorp.example" operation="copy">
+        <rest http_method="GET" path="/s/SHARETOKEN" session="once">
+            <response form_input="requesttoken" name="rt"/>
+        </rest>
+        <rest http_method="POST" path="/s/SHARETOKEN" session="once" accept_status="302,303">
+            <form field="password"     value="a-scoped-share-password"/>
+            <form field="requestToken" value="{rt}"/>
+        </rest>
+        <rest http_method="PUT" path="/public.php/dav/files/SHARETOKEN/{upload.filename}"
+              body="{upload.local_path}"/>
+    </upload>
+
+The two login steps run once; the files are then sent with the session they opened. See `REST configuration examples`_ for the form login of Nextcloud.
 
 `Back to Root <#anchor-root>`_
 
@@ -421,6 +468,140 @@ The test configurations for these servers are in ``tests/RestAgent`` of the sour
 
 `Back to Root <#anchor-root>`_
 
+.. _rest-examples:
+
+REST configuration examples
+===========================
+
+.. warning::
+
+    These examples show the syntax. They are not equally secure: each one says what it protects and what it does not. Do not reuse one without understanding it.
+
+The collector may run on a compromised host: its configuration, credentials included, can be read.
+
+..  csv-table::
+    :header: Question, Stronger, Weaker
+    :align: left
+    :widths: auto
+
+    "Is the server authenticated?", "``server_cert_pin``, or a trusted certificate", "``insecure=""true""``, plain HTTP"
+    "What can the embedded credential do?", "only write, revocable, short-lived", "anonymous write; read or delete rights"
+    "Is the collection encrypted?", "a `recipient <#recipient-element>`_ is configured", "no recipient"
+
+Configure a `recipient <#recipient-element>`_ with every example below.
+
+HTTPS with a pinned certificate and a scoped account (WebDAV, Nextcloud)
+------------------------------------------------------------------------
+
+.. code:: xml
+
+    <upload method="rest" server="https://collect.mycorp.example" operation="copy"
+            authscheme="Basic" user="orc-upload" password="..."
+            https_security="tls1.3, tls1.2"
+            server_cert_pin="MIIDJTCCAg2gAwIBAgIU...">
+        <rest http_method="MKCOL" path="/remote.php/dav/files/orc-upload/incoming/" accept_status="405"/>
+        <rest http_method="PUT" path="/remote.php/dav/files/orc-upload/incoming/{upload.filename}"
+              body="{upload.local_path}"/>
+    </upload>
+
+*Protects*: the server is identified by its pinned certificate, so the collection cannot be sent to another server.
+
+*Does not protect*: the password can be read from the collector. Use an account dedicated to uploads, unable to read or delete, and disable it after the engagement.
+
+Chunked upload into Nextcloud
+-----------------------------
+
+.. code:: xml
+
+    <upload method="rest" server="https://collect.mycorp.example" operation="copy"
+            authscheme="Basic" user="orc-upload" password="..."
+            https_security="tls1.3, tls1.2"
+            server_cert_pin="MIIDJTCCAg2gAwIBAgIU...">
+        <rest http_method="MKCOL" path="/remote.php/dav/files/orc-upload/incoming/" accept_status="405"/>
+        <rest http_method="MKCOL" path="/remote.php/dav/uploads/orc-upload/{upload.random:hex:16}"/>
+        <rest http_method="PUT" path="/remote.php/dav/uploads/orc-upload/{upload.random:hex:16}/{upload.range_start}"
+              body="{upload.local_path}" chunk_size="10485760"/>
+        <rest http_method="MOVE" path="/remote.php/dav/uploads/orc-upload/{upload.random:hex:16}/.file">
+            <header>Destination: /remote.php/dav/files/orc-upload/incoming/{upload.filename}</header>
+        </rest>
+    </upload>
+
+Same protection as the previous example. Check that the file received is identical to the one collected.
+
+S3 with a signed, scoped credential (AWS SigV4)
+-----------------------------------------------
+
+.. code:: xml
+
+    <upload method="rest" server="https://s3.mycorp.example" operation="copy"
+            https_security="tls1.3, tls1.2"
+            authscheme="AWSv4" access_key="..." secret_key="..." session_token="..."
+            aws_region="eu-west-3">
+        <rest http_method="PUT" path="/orc-bucket/incoming/{upload.filename}" body="{upload.local_path}"/>
+    </upload>
+
+*Protects*: the credential can be revoked, and with ``session_token`` it expires on its own. Allow it only to write (``s3:PutObject``) to the upload folder.
+
+*Does not protect*: until it expires, whoever holds the collector can write, and overwrite, in that folder: enable bucket versioning. Not available on Windows XP.
+
+S3 with an anonymous write-only bucket
+--------------------------------------
+
+.. code:: xml
+
+    <upload method="rest" server="https://s3.mycorp.example" operation="copy"
+            https_security="tls1.3, tls1.2"
+            server_cert_pin="MIIDJTCCAg2gAwIBAgIU...">
+        <rest http_method="PUT" path="/orc-bucket/incoming/{upload.filename}" body="{upload.local_path}"/>
+    </upload>
+
+**Weaker than the signed form.** There is no credential, but the bucket accepts writes from **anyone who can reach it**, who can then fill it or overwrite a collection. Only acceptable if the bucket allows writing and nothing else, versioning is enabled, and the server is reachable only from the collected network. A `recipient <#recipient-element>`_ is mandatory here.
+
+Form login into a Nextcloud public share
+----------------------------------------
+
+.. code:: xml
+
+    <upload method="rest" server="https://share.mycorp.example" operation="copy"
+            https_security="tls1.3, tls1.2"
+            server_cert_pin="MIIDJTCCAg2gAwIBAgIU...">
+        <rest http_method="GET" path="/s/SHARETOKEN/authenticate/showshare" session="once">
+            <response attribute="data-requesttoken" name="rt1"/>
+        </rest>
+        <rest http_method="POST" path="/s/SHARETOKEN/authenticate/showshare"
+              session="once" accept_status="302,303">
+            <header>requesttoken: {rt1}</header>
+            <form field="password"     value="SHARE-PASSWORD"/>
+            <form field="sharingToken" value="SHARETOKEN"/>
+            <form field="sharingType"  value="3"/>
+        </rest>
+        <rest http_method="GET" path="/s/SHARETOKEN" session="once">
+            <response attribute="data-requesttoken" name="rt2"/>
+        </rest>
+        <rest http_method="PUT" path="/public.php/dav/files/SHARETOKEN/{upload.filename}"
+              body="{upload.local_path}">
+            <header>requesttoken: {rt2}</header>
+            <header>X-Requested-With: XMLHttpRequest</header>
+            <header>Origin: https://share.mycorp.example</header>
+        </rest>
+    </upload>
+
+*Protects*: no user account is embedded, and deleting the share revokes access.
+
+*Does not protect*: the share token and password can be read from the collector. If the share lets visitors see or download its content, they give access to every collection. This was tested with a password-protected share only, and may break with a Nextcloud update.
+
+Plain HTTP, for a laboratory only
+---------------------------------
+
+.. code:: xml
+
+    <upload method="rest" server="http://127.0.0.1:8089" operation="copy" insecure="true">
+        <rest http_method="PUT" path="/up/{upload.filename}" body="{upload.local_path}"/>
+    </upload>
+
+**Never use this on a real collection.** Nothing is encrypted and the server is not authenticated: anyone on the network path can read the collection. ``insecure="true"`` is required so this cannot happen by mistake.
+
+`Back to Root <#anchor-root>`_
 
 .. _orc_local_config-recipient-element:
 
